@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import absolute_import
 import math
 import os
+from posix import environ
 import time
 import tempfile as tempfile
 from functools import wraps
@@ -35,11 +36,13 @@ import tests.unit_tests as unittest
 import madgraph.various.misc as misc
 from six.moves import range
 from six.moves import zip
+
 try:
-    from symbolica.community.spenso import TensorNetwork
+    from symbolica.community.spenso import TensorNetwork,Representation,TensorName,TensorLibrary,LibraryTensor,TensorStructure
+
 except ImportError:
     symbolica = None
-    
+
 set_global = misc.set_global
 
 
@@ -2847,15 +2850,102 @@ class test_aloha_creation(unittest.TestCase):
                   spins = [ 3, 3, 1 ],
                   structure = 'Metric(1,2)')
 
-        abstract = create_aloha.AbstractRoutineBuilder(VVS1).compute_routine(1, [], abstract_only=True)
-
+        abstract = create_aloha.AbstractRoutineBuilder(VVS1).compute_routine(1, [],abstract_only=True)
+        non_abstract = create_aloha.AbstractRoutineBuilder(VVS1).compute_routine(1, [])
 
         misc.sprint(abstract.expr)
         misc.sprint(abstract.denominator)
-        text = abstract.expr.to_spenso()
+
+
+        mink = Representation.mink(4)
+        lib = TensorLibrary.hep_lib()
+        vector = TensorName("Vector")
+        p = TensorName("P")
+
+        v2 = LibraryTensor.dense(vector(N(2), mink),[1, 2, 3, 4])
+        lib.register(v2)
+        p1 = LibraryTensor.dense(p(N(1), mink),[10, 11, 12, 19])
+        lib.register(p1)
+        p2 = LibraryTensor.dense(p(N(2), mink),[101, 111, 121, 134])
+        lib.register(p2)
+        p3 = LibraryTensor.dense(p(N(3), mink),[ 1001, 1106, 1240, 1320])
+        lib.register(p3)
+        text = abstract.expr.to_spenso().replace(E("OM_1"),N(9)).replace(E("OM_2"),N(11)).replace(E("OM_3"),N(13)).replace(E("Scalar")(3),N(12))
+        tn = TensorNetwork(text,library=lib)
+        misc.sprint(tn)
+        tn.execute(library=lib)
+        t = tn.result_tensor()
+        misc.sprint(t)
+
+        tn = TensorNetwork(text,library=lib)
+
+        p1 = LibraryTensor.dense(p(N(1), mink),[14, 11, 12, 19])
+        lib.register(p1)
+        tn.execute(library=lib)
+        t = tn.result_tensor()
+        misc.sprint(t)
+
 
         misc.sprint(text)
         misc.sprint(TensorNetwork(text))
+
+
+
+
+
+        tn = TensorNetwork(text)
+        misc.sprint(tn)
+        tn.execute()
+        t = tn.result_tensor()
+        misc.sprint(t)
+        params = []
+        params += TensorNetwork(vector(N(2), mink(1))).result_tensor() # tensors implement the sequence protocol, so can be treated just like lists
+        params += TensorNetwork(p(N(1), mink(1))).result_tensor()
+        params += TensorNetwork(p(N(2), mink(1))).result_tensor()
+        params += TensorNetwork(p(N(3), mink(1))).result_tensor()
+        params += [
+           E("OM_1"),
+           E("OM_2"),
+           E("OM_3"),
+           E("Scalar")(3),
+        ]
+
+        misc.sprint(params)
+
+        # Much like the expressions, tensors have the same evaluation api, just that they return a tensor instead of an expression
+        e=t.evaluator(constants={}, params=params, funs={})
+        # The evaluator can be compiled to a shared library
+        c = e.compile(function_name="f", filename="test_expression.cpp",
+                      library_name="test_expression.so", inline_asm="none")
+
+
+
+        e_params = [1.,2.,3.,4.,10.,11.,12.,19.,101.,111.,121.,134.,1001.,1106.,1240.,1320.,9.,11.,13.,12.]
+        eval_res = e.evaluate_complex([e_params])[0]
+
+        print(eval_res)
+        eval_res = c.evaluate_complex([e_params])[0]
+
+        print(eval_res)
+
+
+        V2_1, V2_2, V2_3, V2_4  = 1, 2, 3, 4
+        OM1,OM2,OM3 = 9,11,13
+        S3_1 = 12
+        j = complex(0,1)
+        P1_0,P1_1,P1_2,P1_3 = 10, 11, 12, 19
+        P2_0,P2_1,P2_2,P2_3 = 101, 111, 121, 134
+        P3_0,P3_1,P3_2,P3_3 = 1001, 1106, 1240, 1320
+        env = locals()
+        for name, cexpr in non_abstract.contracted.items():
+            exec('%s = %s' % (name, cexpr),env,env)
+            print('%s = %s' % (name, cexpr))
+
+        for ind,target in zip(non_abstract.expr.listindices(),[-133932j,-147336j,-160740j,-254496j]):
+            # print('PIIIIII %s' % (non_abstract.expr.get_rep(ind)))
+            self.assertEqual(eval(str(non_abstract.expr.get_rep(ind)),env,env),target)
+
+
 
 
 
@@ -2875,15 +2965,24 @@ class test_aloha_creation(unittest.TestCase):
         V1_1, V1_2, V1_3, V1_4  = 5, 6, 7, 8
         V3_1, V3_2, V3_3, V3_4  = 9, 100, 11, 13
         OM1,OM2,OM3 = 9,11,13
+        TMP0 = 11
+        TMP1 = 11
+        TMP2 = 11
+        TMP3 = 11
+        TMP4 = 11
         j = complex(0,1)
         P1_0,P1_1,P1_2,P1_3 = 10, 11, 12, 19
         P2_0,P2_1,P2_2,P2_3 = 101, 111, 121, 134
         P3_0,P3_1,P3_2,P3_3 = 1001, 1106, 1240, 1320
+        env = locals()
         for name, cexpr in abstract_ZP.contracted.items():
-            exec('%s = %s' % (name, cexpr))
+            exec('%s = %s' % (name, cexpr),env,env)
+            print('%s = %s' % (name, cexpr))
+
 
         for ind in expr.listindices():
-            self.assertEqual(eval(str(expr.get_rep(ind))), 178727040j)
+            print('PIIIIII %s' % (expr.get_rep(ind)))
+            self.assertEqual(eval(str(expr.get_rep(ind)),env,env), 178727040j)
 
     def test_short_regular_expression_propa(self):
 

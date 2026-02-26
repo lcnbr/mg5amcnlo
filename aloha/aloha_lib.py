@@ -51,11 +51,13 @@ import numbers
 import re
 import aloha # define mode of writting
 from six.moves import range
+
 try:
-    from symbolica import E, S
+    from symbolica import E, S, N
 except ImportError:
     symbolica = None
     pass
+
 try:
     import madgraph.various.misc as misc
 except Exception:
@@ -487,6 +489,7 @@ class AddVariable(list):
 
     def to_spenso(self):
         """ String representation in the spenso convention"""
+
         sum = 0
 
         for n in self:
@@ -498,7 +501,8 @@ class AddVariable(list):
                 print("except spenso", str(n))
                 sum += E(str(n))
 
-        return sum * E(str(self.prefactor))
+        return (sum * E(str(self.prefactor))).replace(E("j"),N(1j))
+
 
 
 
@@ -841,18 +845,18 @@ class MultVariable(array):
 
     def to_spenso(self):
         """ String representation in the spenso convention"""
+
         product = E(str(self.prefactor))
         for n in self:
             t = KERNEL.objs[n]
             try:
-                product *= t.to_spenso()
                 product *= t.to_spenso()
             except:
                 print("product with", type(t))
                 print("except spenso", str(t))
                 product *= E(str(t))
 
-        return product
+        return product.replace(E("j"),N(1j))
 
 
 

@@ -35,6 +35,7 @@ import aloha.aloha_lib as aloha_lib
 import aloha
 import cmath
 from six.moves import range
+
 try:
     from symbolica import E, S
     from symbolica.community.spenso import Representation
@@ -42,6 +43,7 @@ try:
 except ImportError:
     symbolica = None
     pass
+
 #===============================================================================
 # P (Momenta)
 #===============================================================================
@@ -66,10 +68,12 @@ class L_P(aloha_lib.LorentzObject):
                                      (2,): self.sub2, (3,): self.sub3},
                                     self.lorentz_ind, [])
 
+
     def to_spenso(self):
         mink = Representation.mink(4)
-        spinor = N("P")
-        return spinor(E(str(self.particle)), mink(self.lorentz_ind[0]))
+        mom = N(f"P")
+        #P(<particle_id>,mink(4,<lorentz_index>))
+        return mom(E(str(self.particle)), mink(self.lorentz_ind[0]))
 
 
 class P(aloha_lib.FactoryLorentz):
@@ -109,6 +113,8 @@ class L_PBar(aloha_lib.LorentzObject):
                                     self.lorentz_ind, [])
 
 
+
+
 class PBar(aloha_lib.FactoryLorentz):
     """ Helas Object for an Impulsion """
 
@@ -142,6 +148,11 @@ class L_PVec(aloha_lib.LorentzObject):
                                     {(0,): 0, (1,): self.sub1, \
                                      (2,): self.sub2, (3,): self.sub3},
                                     self.lorentz_ind, [])
+    # def to_spenso(self):
+    #     mink = Representation.mink(4)
+    #     # mom = N("Pvec",normalize=Pvec(x_,cind(0))=>0 )
+    #     #P(<particle_id>,mink(4,<lorentz_index>))
+    #     return mom(E(str(self.particle)), mink(self.lorentz_ind[0]))
 
 
 class PVec(aloha_lib.FactoryLorentz):
@@ -393,8 +404,12 @@ class L_OverMass2(aloha_lib.LorentzObject):
         self.representation = aloha_lib.LorentzObjectRepresentation(
                                 mass, self.lorentz_ind, self.spin_ind)
 
+
     def to_spenso(self):
-        return E("1/(M_%s)^2" % self.particle)
+
+       # E()
+        # E("1/(M_%s)^2" % self.particle)
+        return E("OM_%s" % self.particle)
 
 class OverMass2(aloha_lib.FactoryLorentz):
 
@@ -591,9 +606,11 @@ class L_Vector(aloha_lib.LorentzObject):
                                     self.lorentz_ind, [])
 
     def to_spenso(self):
+
         mink = Representation.mink(4)
-        spinor = N("Vector")
-        return spinor(E(str(self.particle)), mink(self.lorentz_ind[0]))
+        vector = N("Vector")
+        return vector(E(str(self.particle)), mink(self.lorentz_ind[0]))
+
 
 class Vector(aloha_lib.FactoryLorentz):
 

@@ -88,6 +88,9 @@ devenv.lock
 # direnv
 .direnv
 .zed/*
-
+flake.nix
+flake.lock
+test_expression.cpp
+test_expression.so
 # pre-commit
 .pre-commit-config.yaml
