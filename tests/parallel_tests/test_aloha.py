@@ -19,12 +19,13 @@ from __future__ import division
 from __future__ import absolute_import
 import math
 import os
+
 from posix import environ
 import time
 import tempfile as tempfile
 from functools import wraps
 from collections import namedtuple
-
+import tests.IOTests as IOTests
 import aloha
 import aloha.aloha_object as aloha_obj
 import aloha.aloha_lib as aloha_lib
@@ -36,7 +37,7 @@ import tests.unit_tests as unittest
 import madgraph.various.misc as misc
 from six.moves import range
 from six.moves import zip
-
+pjoin = os.path.join
 try:
     from symbolica.community.spenso import TensorNetwork,Representation,TensorName,TensorLibrary,LibraryTensor,TensorStructure
 
@@ -44,7 +45,29 @@ except ImportError:
     symbolica = None
 
 set_global = misc.set_global
+PARALLEL_TEST_INPUT_DIR = os.path.join(os.path.dirname(__file__), 'input_files')
 
+
+def read_parallel_test_input(*parts):
+    with open(os.path.join(PARALLEL_TEST_INPUT_DIR, *parts)) as stream:
+        return stream.read()
+class IOTest_Spenso(IOTests.IOTestManager):
+   @IOTests.createIOTest()
+   def testIO_FFV1_spenso(self):
+      """ target: input_files/FFV1C1_1.cpp
+      """
+
+      FFV1 = UFOLorentz(name = 'FFV1',
+                spins = [ 2, 2, 3 ],
+                structure = 'Gamma(3,2,1)')
+
+      builder = create_aloha.AbstractRoutineBuilder(FFV1)
+      # builder.apply_conjugation()
+      amp = builder.compute_routine(1, keep_abstract=True)
+
+      routine = amp.write(output_dir=None, language='spenso')
+
+      open(pjoin(self.IOpath,'FFV1C1_1.cpp'),'w').write(routine)
 
 class TestVariable(unittest.TestCase):
 
@@ -2916,7 +2939,8 @@ class test_aloha_creation(unittest.TestCase):
         e=t.evaluator(constants={}, params=params, funs={})
         # The evaluator can be compiled to a shared library
         c = e.compile(function_name="f", filename="test_expression.cpp",
-                      library_name="test_expression.so", inline_asm="none")
+                      library_name="test_expression.so", inline_asm="none",
+                      compiler_path="clang++")
 
 
 
@@ -3955,6 +3979,16 @@ class AbstractRoutineBuilder(create_aloha.AbstractRoutineBuilder):
 class TestAlohaWriter(unittest.TestCase):
     """ simple unittest of the writer more test are in test_export_v4
     and test_export_pythia"""
+
+    def _spenso_param_repr_from_network(self, writer, names):
+        """Expand spenso objects through their tensor network parameters."""
+
+        params = []
+        for name in names:
+            obj = writer._make_spenso_object(name)
+            self.assertIsNotNone(obj)
+            params.extend(repr(param) for param in obj.spenso_parameters())
+        return params
 
     @set_global()
     def test_get_custom_propa(self):
@@ -5247,48 +5281,241 @@ P1(3) = -dimag(F1(1))
         self.assertEqual(len(split_routine), len(split_solution))
 
     def test_short_spenso_C(self):
-        """ test that python writer works """
+        """test that spenso writer returns wrapped evaluator C++"""
 
-        solution_h = """
-"""
-        solution_c="""
-"""
+        aloha_lib.KERNEL.clean()
 
         VVS1 = UFOLorentz(name = 'VVS1',
                  spins = [ 3, 3, 1 ],
                  structure = 'Metric(1,2)')
-        aloha_rout = create_aloha.AbstractRoutineBuilder(VVS1).compute_routine(1, [], keep_abstract=True)
-        misc.sprint(dir(aloha_rout))
-        text = aloha_rout.abstract.to_spenso()
-        misc.sprint(text)
 
-        FFV = UFOLorentz(name = 'FFV1',
+        amp = create_aloha.AbstractRoutineBuilder(VVS1).compute_routine(1, [], keep_abstract=True)
+        routine = amp.write(output_dir=None, language='spenso')
+
+        normal_signature = (
+            'void VVS1_1(std::complex<double> V2[], std::complex<double> S3[], '
+            'std::complex<double> COUP, double M1, double W1,std::complex<double>  V1[])'
+        )
+        self.assertIn(
+            'void VVS1_1_complexf64(std::complex<double> *params, '
+            'std::complex<double> *buffer, std::complex<double> *out)',
+            routine
+        )
+        self.assertIn(normal_signature, routine)
+        self.assertIn('spenso_params[0] = V2[2];', routine)
+        self.assertIn('spenso_params[4] = S3[2];', routine)
+        self.assertIn('spenso_params[5] = P1[0];', routine)
+        self.assertIn('VVS1_1_complexf64(spenso_params, spenso_buffer, spenso_out);', routine)
+        self.assertIn('V1[2]= denom*spenso_out[0];', routine)
+        self.assertIn('V1[5]= denom*spenso_out[3];', routine)
+
+    def test_short_cpp_and_spenso_C_generation(self):
+        """test normal C++ and spenso C++ generation for the same routine"""
+
+        aloha_lib.KERNEL.clean()
+
+        VVS1 = UFOLorentz(name = 'VVS1',
+                 spins = [ 3, 3, 1 ],
+                 structure = 'Metric(1,2)')
+
+        amp = create_aloha.AbstractRoutineBuilder(VVS1).compute_routine(1, [], keep_abstract=True)
+
+        routine_h, routine_c = amp.write(output_dir=None, language='CPP')
+        normal_signature = (
+            'void VVS1_1(std::complex<double> V2[], std::complex<double> S3[], '
+            'std::complex<double> COUP, double M1, double W1,std::complex<double>  V1[])'
+        )
+        self.assertIn(normal_signature, routine_h)
+        self.assertIn(normal_signature, routine_c)
+
+        routine = amp.write(output_dir=None, language='spenso')
+        self.assertIn(
+            'void VVS1_1_complexf64(std::complex<double> *params, '
+            'std::complex<double> *buffer, std::complex<double> *out)',
+            routine
+        )
+        self.assertIn(normal_signature, routine)
+        self.assertIn('spenso_params[0] = V2[2];', routine)
+        self.assertIn('spenso_params[4] = S3[2];', routine)
+        self.assertIn('spenso_params[5] = P1[0];', routine)
+        self.assertIn('VVS1_1_complexf64(spenso_params, spenso_buffer, spenso_out);', routine)
+        self.assertIn('V1[2]= denom*spenso_out[0];', routine)
+        self.assertIn('V1[5]= denom*spenso_out[3];', routine)
+        spenso_writer = aloha_writers.ALOHAWriterForSpenso(amp, None)
+        expected_params = self._spenso_param_repr_from_network(
+            spenso_writer, ['V2', 'S3', 'P1', 'OM1']
+        )
+        self.assertIn(
+            '// ALOHA spenso parameters: [%s]' % ', '.join(expected_params),
+            routine
+        )
+
+    def test_short_spenso_params_follow_cpp_argument_order(self):
+        """test spenso params are built from the normal C++ call arguments"""
+
+        aloha_lib.KERNEL.clean()
+
+        VVS1 = UFOLorentz(name = 'VVS1',
+                 spins = [ 3, 3, 1 ],
+                 structure = 'Metric(1,2)')
+
+        amp = create_aloha.AbstractRoutineBuilder(VVS1).compute_routine(1, [], keep_abstract=True)
+
+        cpp_writer = aloha_writers.ALOHAWriterForCPP(amp, None)
+        cpp_call_arg = cpp_writer.define_argument_list()
+
+        spenso_writer = aloha_writers.ALOHAWriterForSpenso(amp, None)
+        spenso_writer._collect_declarations()
+        used_names = {name for type, name in spenso_writer.declaration}
+        params = [repr(param) for param in spenso_writer._build_params(used_names)]
+
+        self.assertEqual(spenso_writer.call_arg, cpp_call_arg)
+        self.assertEqual(cpp_call_arg, [
+            ('list_complex', 'V2'),
+            ('list_complex', 'S3'),
+            ('complex', 'COUP'),
+            ('double', 'M1'),
+            ('double', 'W1'),
+        ])
+        expected_params = self._spenso_param_repr_from_network(
+            spenso_writer, ['V2', 'S3', 'P1', 'OM1']
+        )
+        self.assertEqual(params, expected_params)
+
+        aloha_lib.KERNEL.clean()
+
+        FFV1 = UFOLorentz(name = 'FFV1',
                  spins = [ 2, 2, 3 ],
                  structure = 'Gamma(3,2,1)')
 
-        builder = create_aloha.AbstractRoutineBuilder(FFV)
+        builder = create_aloha.AbstractRoutineBuilder(FFV1)
         builder.apply_conjugation()
         amp = builder.compute_routine(1, keep_abstract=True)
+
+        cpp_writer = aloha_writers.ALOHAWriterForCPP(amp, None)
+        cpp_call_arg = cpp_writer.define_argument_list()
+
+        spenso_writer = aloha_writers.ALOHAWriterForSpenso(amp, None)
+        spenso_writer._collect_declarations()
+        used_names = {name for type, name in spenso_writer.declaration}
+        params = [repr(param) for param in spenso_writer._build_params(used_names)]
+
+        self.assertEqual(spenso_writer.call_arg, cpp_call_arg)
+        self.assertEqual(cpp_call_arg, [
+            ('list_complex', 'F1'),
+            ('list_complex', 'V3'),
+            ('complex', 'COUP'),
+            ('double', 'M2'),
+            ('double', 'W2'),
+        ])
+        expected_params = self._spenso_param_repr_from_network(
+            spenso_writer, ['F1', 'V3', 'M2', 'P2']
+        )
+        self.assertEqual(params, expected_params)
+
+        aloha_lib.KERNEL.clean()
+
+        VVV1 = UFOLorentz(name = 'VVV1',
+                 spins = [ 3, 3, 3 ],
+                 structure = (
+                     'P(3,1)*Metric(1,2)-P(3,2)*Metric(1,2)'
+                     '-P(2,1)*Metric(1,3)+P(2,3)*Metric(1,3)'
+                     '+P(1,2)*Metric(2,3)-P(1,3)*Metric(2,3)'
+                 ))
+
+        amp = create_aloha.AbstractRoutineBuilder(VVV1).compute_routine(
+            1, [], keep_abstract=True
+        )
+
+        cpp_writer = aloha_writers.ALOHAWriterForCPP(amp, None)
+        cpp_call_arg = cpp_writer.define_argument_list()
+
+        spenso_writer = aloha_writers.ALOHAWriterForSpenso(amp, None)
+        spenso_writer._collect_declarations()
+        used_names = {name for type, name in spenso_writer.declaration}
+        params = [repr(param) for param in spenso_writer._build_params(used_names)]
+
+        self.assertEqual(spenso_writer.call_arg, cpp_call_arg)
+        self.assertEqual(cpp_call_arg, [
+            ('list_complex', 'V2'),
+            ('list_complex', 'V3'),
+            ('complex', 'COUP'),
+            ('double', 'M1'),
+            ('double', 'W1'),
+        ])
+        expected_params = self._spenso_param_repr_from_network(
+            spenso_writer, ['P2', 'V2', 'P3', 'V3', 'P1', 'OM1']
+        )
+        self.assertEqual(params, expected_params)
+        routine = amp.write(output_dir=None, language='spenso')
+        self.assertIn('spenso_params[0] = P2[0];', routine)
+        self.assertIn('spenso_params[4] = V2[2];', routine)
+        self.assertIn('spenso_params[8] = P3[0];', routine)
+        self.assertIn('spenso_params[12] = V3[2];', routine)
+
+
+    def test_short_spenso_FFV1_C(self):
+        """test that FFV1 spenso writer returns wrapped evaluator C++"""
+
+        aloha_lib.KERNEL.clean()
+
+        FFV1 = UFOLorentz(name = 'FFV1',
+                 spins = [ 2, 2, 3 ],
+                 structure = 'Gamma(3,2,1)')
+
+        builder = create_aloha.AbstractRoutineBuilder(FFV1)
+        builder.apply_conjugation()
+        amp = builder.compute_routine(1, keep_abstract=True)
+
         routine = amp.write(output_dir=None, language='spenso')
 
-        split_solution = solution_h.split('\n')
-        split_routine = routine[0].split('\n')
+        normal_signature = (
+            'void FFV1C1_1(std::complex<double> F1[], std::complex<double> V3[], '
+            'std::complex<double> COUP, double M2, double W2,std::complex<double>  F2[])'
+        )
+        self.assertIn(
+            'void FFV1C1_1_complexf64(std::complex<double> *params, '
+            'std::complex<double> *buffer, std::complex<double> *out)',
+            routine
+        )
+        self.assertIn(normal_signature, routine)
+        self.assertIn('spenso_params[0] = F1[2];', routine)
+        self.assertIn('spenso_params[4] = V3[2];', routine)
+        self.assertIn('spenso_params[8] = M2;', routine)
+        self.assertIn('spenso_params[9] = P2[0];', routine)
+        self.assertIn('FFV1C1_1_complexf64(spenso_params, spenso_buffer, spenso_out);', routine)
+        self.assertIn('F2[2]= denom*spenso_out[0];', routine)
+        self.assertIn('F2[5]= denom*spenso_out[3];', routine)
 
+        spenso_writer = aloha_writers.ALOHAWriterForSpenso(amp, None)
+        expected_params = self._spenso_param_repr_from_network(
+            spenso_writer, ['F1', 'V3', 'M2', 'P2']
+        )
+        self.assertIn(
+            '// ALOHA spenso parameters: [%s]' % ', '.join(expected_params),
+            routine
+        )
 
+    def test_short_spenso_FFV1_parse(self):
+        """test that FFV1 spenso output parses into a tensor network"""
 
-        self.assertEqual(split_solution, split_routine)
-        self.assertEqual(len(split_routine), len(split_solution))
+        aloha_lib.KERNEL.clean()
 
-        split_solution = solution_c.split('\n')
-        #split_solution2 = solution2_c.split('\n')
-        split_routine = routine[1].split('\n')
-        for i in range(len(split_routine)):
-            try:
-                self.assertEqual(split_solution[i], split_routine[i])
-            except:
-                raise
-                self.assertEqual(split_solution2[i], split_routine[i])
-        self.assertEqual(len(split_routine), len(split_solution))
+        FFV1 = UFOLorentz(name = 'FFV1',
+                 spins = [ 2, 2, 3 ],
+                 structure = 'Gamma(3,2,1)')
+
+        builder = create_aloha.AbstractRoutineBuilder(FFV1)
+        builder.apply_conjugation()
+        amp = builder.compute_routine(1, keep_abstract=True)
+
+        writer = aloha_writers.ALOHAWriterForSpenso(amp, None)
+        spenso_expr = writer._get_spenso_source().to_spenso()
+        misc.sprint(spenso_expr)
+        tensor_network = TensorNetwork(spenso_expr, library=writer._build_tensor_library())
+
+        misc.sprint(tensor_network)
+        self.assertIn('digraph {', str(tensor_network))
 
 
 

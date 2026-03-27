@@ -37,12 +37,20 @@ import cmath
 from six.moves import range
 
 try:
-    from symbolica import E, S
+    from symbolica import E, S, Expression
     from symbolica.community.spenso import Representation
     from symbolica.community.spenso import TensorName as N
 except ImportError:
     symbolica = None
     pass
+
+
+def _spenso_sparse_value(value):
+    """Convert numeric tensor data to a Symbolica expression."""
+
+    from symbolica import N as Numeric
+
+    return E(str(value)).replace(E("j"), Numeric(1j))
 
 #===============================================================================
 # P (Momenta)
@@ -327,6 +335,9 @@ class L_Mass(aloha_lib.LorentzObject):
         self.representation = aloha_lib.LorentzObjectRepresentation(
                                 mass, self.lorentz_ind, self.spin_ind)
 
+    def to_spenso(self):
+        return E("M_%s" % self.particle)
+
 class Mass(aloha_lib.FactoryLorentz):
 
     object_class = L_Mass
@@ -351,6 +362,9 @@ class L_Coup(aloha_lib.LorentzObject):
 
         self.representation = aloha_lib.LorentzObjectRepresentation(
                                 coup, self.lorentz_ind, self.spin_ind)
+
+    def to_spenso(self):
+        return E("COUP%s" % self.nb)
 
 class Coup(aloha_lib.FactoryLorentz):
 
@@ -474,6 +488,9 @@ class L_Width(aloha_lib.LorentzObject):
 
         self.representation= aloha_lib.LorentzObjectRepresentation(
                             width, self.lorentz_ind, self.spin_ind)
+
+    def to_spenso(self):
+        return E("W_%s" % self.particle)
 
 class Width(aloha_lib.FactoryLorentz):
 
@@ -765,13 +782,26 @@ class L_Gamma(aloha_lib.LorentzObject):
         self.representation = aloha_lib.LorentzObjectRepresentation(self.gamma,
                                 self.lorentz_ind,self.spin_ind)
 
-    def to_spenso(self):
+    @staticmethod
+    def spenso_tensor_structure():
         mink = Representation.mink(4)
         bis = Representation.bis(4)
         gamma = N("gamma")
-        gamma_ind = gamma(mink, bis, bis)
+        return gamma(mink, bis, bis)
 
-        return gamma_ind(self.lorentz_ind[0], self.spin_ind[0], self.spin_ind[1])
+    def to_spenso(self):
+        gamma_ind = self.spenso_tensor_structure()
+
+        return gamma_ind(self.spin_ind[0], self.spin_ind[1],self.lorentz_ind[0])
+
+    def register_to_spenso_library(self, library):
+        from symbolica.community.spenso import LibraryTensor
+
+        gamma_ind = self.spenso_tensor_structure()
+        tensor = LibraryTensor.sparse(gamma_ind, Expression)
+        for key, value in self.gamma.items():
+            tensor[list(key)] = _spenso_sparse_value(value)
+        library.register(tensor)
 
 
 
@@ -948,6 +978,25 @@ class L_C(aloha_lib.LorentzObject):
         self.representation = aloha_lib.LorentzObjectRepresentation(self.Cmetrix,
                                              self.lorentz_ind,self.spin_ind)
 
+    @staticmethod
+    def spenso_tensor_structure():
+        bis = Representation.bis(4)
+        charge_conjugation = N("C")
+        return charge_conjugation(bis, bis)
+
+    def to_spenso(self):
+        c_ind = self.spenso_tensor_structure()
+        return c_ind(self.spin_ind[0], self.spin_ind[1])
+
+    def register_to_spenso_library(self, library):
+        from symbolica.community.spenso import LibraryTensor
+
+        c_ind = self.spenso_tensor_structure()
+        tensor = LibraryTensor.sparse(c_ind, Expression)
+        for key, value in self.Cmetrix.items():
+            tensor[list(key)] = _spenso_sparse_value(value)
+        library.register(tensor)
+
 class C(aloha_lib.FactoryLorentz):
 
     object_class = L_C
@@ -1113,6 +1162,10 @@ class L_Identity(aloha_lib.LorentzObject):
 
         self.representation = aloha_lib.LorentzObjectRepresentation(self.identity,
                                              self.lorentz_ind,self.spin_ind)
+
+    def to_spenso(self):
+        bis = Representation.bis(4)
+        return bis.id(self.spin_ind[0], self.spin_ind[1])
 
 class Identity(aloha_lib.FactoryLorentz):
 

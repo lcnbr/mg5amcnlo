@@ -17,6 +17,7 @@ import re
 from numbers import Number
 from collections import defaultdict
 from fractions import Fraction
+import tempfile
 # fast way to deal with string
 from six import StringIO
 # Look at http://www.skymind.com/~ocrow/python_string/ 
@@ -2172,6 +2173,379 @@ class ALOHAWriterForGPU(ALOHAWriterForCPP):
 
         return out.getvalue() 
 
+
+class ALOHAWriterForSpenso(ALOHAWriterForCPP):
+    """Write a HELAS-shaped C++ wrapper around a spenso tensor evaluator."""
+
+    extension = '.cpp'
+    writer = writers.CPPWriter
+
+    def change_var_format(self, name):
+        """Track declarations and format variables as normal C++ ALOHA does."""
+
+        return ALOHAWriterForCPP.change_var_format(self, name)
+
+    def _get_spenso_source(self):
+        """Return the abstract expression object that supports ``to_spenso``."""
+
+        for candidate in (getattr(self.routine, 'abstract', None),
+                          getattr(self.routine, 'expr', None)):
+            if hasattr(candidate, 'to_spenso'):
+                return candidate
+        raise Exception('Spenso output requires keep_abstract=True or abstract_only=True.')
+
+    def _collect_declarations(self):
+        """Populate declarations following the standard writer expression walk."""
+
+        if self.routine.contracted:
+            keys = sorted(self.routine.contracted.keys())
+            for name in keys:
+                obj = self.routine.contracted[name]
+                self.write_obj(obj)
+                self.declaration.add(('complex', name))
+
+        def sort_fct(a, b):
+            if len(a) < len(b):
+                return -1
+            elif len(a) > len(b):
+                return 1
+            elif a < b:
+                return -1
+            else:
+                return 1
+
+        keys = list(self.routine.fct.keys())
+        keys.sort(key=misc.cmp_to_key(sort_fct))
+        for name in keys:
+            fct, objs = self.routine.fct[name]
+            self.declaration.add(('fct', fct))
+            for obj in objs:
+                self.write_obj(obj)
+
+        numerator = self.routine.expr
+        if not self.offshell:
+            self.write_obj(numerator.get_rep([0]))
+        else:
+            if self.routine.denominator:
+                self.write_obj(self.routine.denominator)
+                self.declaration.add(('complex', 'denom'))
+            for ind in numerator.listindices():
+                self.write_obj(numerator.get_rep(ind))
+
+    def _get_symbol_names(self, expr):
+        """Collect symbol/function names present in the spenso expression."""
+
+        names = set()
+        try:
+            symbols = expr.get_all_symbols()
+        except Exception:
+            return names
+
+        for symbol in symbols:
+            name = repr(symbol)
+            if '::' in name:
+                name = name.rsplit('::', 1)[-1]
+            names.add(name)
+        return names
+
+    def _build_tensor_library(self):
+        from symbolica.community.spenso import TensorLibrary
+        import aloha.aloha_object as aloha_object
+
+        library = TensorLibrary.construct()
+        for obj in (aloha_object.Gamma(1, 2, 3), aloha_object.C(1, 2)):
+            obj.register_to_spenso_library(library)
+        return library
+
+    def _make_spenso_object(self, name):
+        import aloha.aloha_object as aloha_object
+
+        if name.startswith('OM') and name[2:].isdigit():
+            return aloha_object.OverMass2(int(name[2:]))
+
+        if len(name) < 2 or not name[1:].isdigit():
+            return None
+
+        index = int(name[1:])
+        if name[0] == 'F':
+            return aloha_object.Spinor(1, index)
+        elif name[0] == 'V':
+            return aloha_object.Vector(1, index)
+        elif name[0] == 'S':
+            return aloha_object.Scalar(index)
+        elif name[0] == 'P':
+            return aloha_object.P(1, index)
+        elif name[0] == 'M':
+            return aloha_object.Mass(index)
+        elif name[0] == 'W':
+            return aloha_object.Width(index)
+
+        return None
+
+    def _build_param_entries(self, used_names):
+        from symbolica import E
+
+        self.define_argument_list()
+
+        entries = []
+        seen = set()
+        handled_names = set()
+
+        def append_object_params(name, required=False):
+            obj = self._make_spenso_object(name)
+            if obj is None:
+                if required:
+                    raise Exception('Spenso writer does not support call argument %s.' % name)
+                return
+            for component, param in enumerate(obj.spenso_parameters()):
+                key = repr(param)
+                if key in seen:
+                    continue
+                seen.add(key)
+                entries.append((name, component, param))
+            handled_names.add(name)
+
+        for arg_type, name in self.call_arg:
+            if arg_type == 'list_complex':
+                particle_id = name[1:]
+                if particle_id.isdigit():
+                    momentum_name = 'P%s' % particle_id
+                    if momentum_name in used_names:
+                        append_object_params(momentum_name)
+                append_object_params(name, required=True)
+                continue
+            if name.startswith('COUP') and name in used_names:
+                param = E(name)
+                key = repr(param)
+                if key not in seen:
+                    seen.add(key)
+                    entries.append((name, None, param))
+                handled_names.add(name)
+                continue
+            if arg_type in ('double', 'complex') and name in used_names:
+                append_object_params(name)
+
+        for prefix in ('P', 'OM', 'M', 'W'):
+            for index in range(1, len(self.particles) + 1):
+                name = '%s%d' % (prefix, index)
+                if name not in used_names or name in handled_names:
+                    continue
+                append_object_params(name)
+
+        for type, name in sorted(self.declaration, key=lambda item: item[1]):
+            if name in used_names and name not in handled_names and name.startswith('COUP'):
+                param = E(name)
+                key = repr(param)
+                if key not in seen:
+                    seen.add(key)
+                    entries.append((name, None, param))
+                handled_names.add(name)
+
+        return entries
+
+    def _build_params(self, used_names):
+        entries = self._build_param_entries(used_names)
+        params = [param for name, component, param in entries]
+        return params
+
+    def _spenso_param_cpp_expr(self, name, component):
+        if name.startswith('P') and name[1:].isdigit():
+            return '%s[%d]' % (name, component)
+        if name.startswith('OM') and name[2:].isdigit():
+            return name
+        if name.startswith('COUP'):
+            return name
+        if len(name) >= 2 and name[1:].isdigit() and name[0] in ['F', 'V', 'S']:
+            return '%s[%d]' % (name, component + self.momentum_size)
+        if len(name) >= 2 and name[1:].isdigit() and name[0] in ['M', 'W']:
+            return name
+        raise Exception('Spenso wrapper cannot pack parameter %s.' % name)
+
+    def _get_spenso_output_indices(self):
+        if not self.offshell:
+            return [[0]]
+        return [list(ind) for ind in self.routine.expr.listindices()]
+
+    def _get_evaluator_buffer_len(self, evaluator_source):
+        pattern = r'extern "C" unsigned long %s_complexf64_get_buffer_len\(\)\s*\{\s*return ([0-9]+);' % self.name
+        match = re.search(pattern, evaluator_source)
+        if not match:
+            raise Exception('Could not determine spenso evaluator buffer length for %s.' % self.name)
+        return int(match.group(1))
+
+    def _get_coupling_name(self):
+        if not 'Coup(1)' in self.routine.infostr:
+            return 'COUP'
+        return '%s' % self.change_number_format(1)
+
+    def _define_spenso_wrapper_body(self, param_entries, buffer_len):
+        out = StringIO()
+        output_indices = self._get_spenso_output_indices()
+
+        out.write('    std::complex<double> spenso_params[%d];\n' % max(1, len(param_entries)))
+        out.write('    std::complex<double> spenso_out[%d];\n' % max(1, len(output_indices)))
+        out.write('    std::complex<double> spenso_buffer[%d];\n' % max(1, buffer_len))
+        for index, (name, component, param) in enumerate(param_entries):
+            out.write('    spenso_params[%d] = %s;\n' % (
+                index, self._spenso_param_cpp_expr(name, component)
+            ))
+        out.write('    %s_complexf64(spenso_params, spenso_buffer, spenso_out);\n' % self.name)
+
+        coup_name = self._get_coupling_name()
+        if not self.offshell:
+            mydict = {}
+            if self.type2def['pointer_vertex'] in ['*']:
+                mydict['pre_vertex'] = '(*'
+                mydict['post_vertex'] = ')'
+            else:
+                mydict['pre_vertex'] = ''
+                mydict['post_vertex'] = ''
+            if coup_name == 'COUP':
+                if self.type2def['pointer_coup'] in ['*']:
+                    mydict['pre_coup'] = '(*'
+                    mydict['post_coup'] = ')'
+                else:
+                    mydict['pre_coup'] = ''
+                    mydict['post_coup'] = ''
+                out.write('    %(pre_vertex)svertex%(post_vertex)s = %(pre_coup)sCOUP%(post_coup)s*spenso_out[0];\n' % mydict)
+            else:
+                out.write('    %(pre_vertex)svertex%(post_vertex)s = spenso_out[0];\n' % mydict)
+            return out.getvalue()
+
+        if 'L' not in self.tag:
+            coeff = 'denom'
+            mydict = {}
+            if self.type2def['pointer_coup'] in ['*']:
+                mydict['pre_coup'] = '(*'
+                mydict['post_coup'] = ')'
+            else:
+                mydict['pre_coup'] = ''
+                mydict['post_coup'] = ''
+            mydict['coup'] = coup_name
+            mydict['i'] = self.outgoing
+            if not aloha.complex_mass:
+                if self.routine.denominator:
+                    if self.routine.denominator == "1":
+                        out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s;\n' % mydict)
+                    else:
+                        mydict['denom'] = self.write_obj(self.routine.denominator)
+                        out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/(%(denom)s);\n' % mydict)
+                else:
+                    out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/((P%(i)s[0]*P%(i)s[0])-(P%(i)s[1]*P%(i)s[1])-(P%(i)s[2]*P%(i)s[2])-(P%(i)s[3]*P%(i)s[3]) - M%(i)s * (M%(i)s -cI* W%(i)s));\n' % mydict)
+            else:
+                if self.routine.denominator:
+                    raise Exception('modify denominator are not compatible with complex mass scheme')
+                out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s/((P%(i)s[0]*P%(i)s[0])-(P%(i)s[1]*P%(i)s[1])-(P%(i)s[2]*P%(i)s[2])-(P%(i)s[3]*P%(i)s[3]) - (M%(i)s*M%(i)s));\n' % mydict)
+
+            self.declaration.add(('complex', 'denom'))
+            if aloha.loop_mode:
+                ptype = 'list_complex'
+            else:
+                ptype = 'list_double'
+            self.declaration.add((ptype, 'P%s' % self.outgoing))
+        else:
+            coeff = 'COUP'
+
+        for index, ind in enumerate(output_indices):
+            out.write('    %s[%d]= %s*spenso_out[%d];\n' % (
+                self.outname, self.pass_to_HELAS(ind), coeff, index
+            ))
+        return out.getvalue()
+
+    def _get_unsupported_symbol_names(self, symbol_names):
+        unsupported = []
+        for name in sorted(symbol_names):
+            if name.startswith('C_'):
+                unsupported.append(name)
+            elif name.startswith('Id_'):
+                unsupported.append(name)
+            elif name.startswith('_M'):
+                unsupported.append(name)
+            elif name.startswith('_W'):
+                unsupported.append(name)
+        return unsupported
+
+    def _compile_cpp(self, evaluator, function_name):
+        with tempfile.TemporaryDirectory(prefix='aloha-spenso-', dir='/tmp') as tmpdir:
+            cpp_path = os.path.join(tmpdir, function_name + '.cpp')
+            so_path = os.path.join(tmpdir, function_name + '.so')
+            try:
+                evaluator.compile(function_name=function_name,
+                                  filename=cpp_path,
+                                  library_name=so_path,
+                                  inline_asm='none',
+                                  compiler_path='/usr/bin/false')
+            except Exception:
+                if not os.path.exists(cpp_path):
+                    raise
+
+            with open(cpp_path) as stream:
+                output = stream.read()
+
+            build_line = ('// Default build instructions: g++ -shared -O3 -fPIC '
+                          '-ffast-math -funsafe-math-optimizations -march=native %s'
+                          % cpp_path)
+            normalized_build_line = ('// Default build instructions: g++ -shared -O3 -fPIC '
+                                     '-ffast-math -funsafe-math-optimizations -march=native %s.cpp'
+                                     % function_name)
+            return output.replace(build_line, normalized_build_line)
+
+    def write(self, mode=None):
+        self.mode = mode
+
+        self._collect_declarations()
+        used_names = {name for type, name in self.declaration}
+        spenso_expr = self._get_spenso_source().to_spenso()
+        symbol_names = self._get_symbol_names(spenso_expr)
+        unsupported = self._get_unsupported_symbol_names(symbol_names)
+        if unsupported:
+            raise NotImplementedError(
+                'Spenso writer does not support symbols: %s' % ', '.join(unsupported)
+            )
+        param_entries = self._build_param_entries(used_names)
+        params = [param for name, component, param in param_entries]
+
+        try:
+            from symbolica.community.spenso import TensorNetwork
+        except ImportError:
+            raise Exception('Spenso output requires symbolica with spenso support.')
+
+        tensor_library = self._build_tensor_library()
+        tensor_network = TensorNetwork(spenso_expr, library=tensor_library)
+        tensor_network.execute(library=tensor_library)
+        evaluator = tensor_network.result_tensor().evaluator(
+            constants={},
+            params=params,
+            funs={}
+        )
+        evaluator_source = self._compile_cpp(evaluator, self.name)
+        header = '// ALOHA spenso expression: %s\n' % repr(spenso_expr)
+        header += '// ALOHA spenso parameters: [%s]\n' % ', '.join(repr(param) for param in params)
+        evaluator_source = header + evaluator_source
+
+        buffer_len = self._get_evaluator_buffer_len(evaluator_source)
+        wrapper_body = self._define_spenso_wrapper_body(param_entries, buffer_len)
+
+        output = StringIO()
+        output.write(evaluator_source)
+        output.write('\n')
+        output.write(self.get_header_txt(mode='no_include'))
+        output.write(self.get_declaration_txt())
+        output.write(self.get_momenta_txt())
+        output.write(wrapper_body)
+        output.write(self.get_foot_txt())
+        output = output.getvalue()
+
+        if self.out_path:
+            writer = self.writer(self.out_path)
+            commentstring = 'This File is Automatically generated by ALOHA \n'
+            commentstring += 'The process calculated in this file is: \n'
+            commentstring += self.routine.infostr + '\n'
+            writer.write_comments(commentstring)
+            writer.writelines(output)
+
+        return output
+
 class ALOHAWriterForPython(WriteALOHA):
     """ A class for returning a file/a string for python evaluation """
     
@@ -2576,7 +2950,7 @@ class WriterFactory(object):
         elif language in ['gpu','cudac']:
             return ALOHAWriterForGPU(data, outputdir, options=options)
         elif language == 'spenso':
-            return ALOHAWriterForGPU(data, outputdir, options=options) 
+            return ALOHAWriterForSpenso(data, outputdir, options=options)
         elif issubclass(language, WriteALOHA):
             return language(data, outputdir, options=options)
         else:
@@ -2614,4 +2988,3 @@ class WriterFactory(object):
 #        ff = open(pjoin(output_dir, 'additional_aloha_function.f'), 'a')
 #        ff.write(unknow_fct_template % dico)
 #        ff.close()
-

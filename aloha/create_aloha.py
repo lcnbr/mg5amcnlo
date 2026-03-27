@@ -176,8 +176,6 @@ class AbstractRoutineBuilder(object):
                 self.expr = self.abstract   
                 misc.sprint('abstract expr', self.expr)
                 return self
-        else:
-            raise Exception
         self.expr = self.compute_aloha_high_kernel(mode, factorize, abstract_only=False)
 
         return self.define_simple_output()
@@ -1396,7 +1394,6 @@ if '__main__' == __name__:
     stop = time.time()
     logger.info('done in %s s' % (stop-start))
   
-
 
 
 

@@ -8,6 +8,7 @@ __pycache__
 PROC*
 cmd*
 ptest*
+proc_card_ptest_*.dat
 *.pkl
 p_ME_*
 *.log
@@ -20,6 +21,8 @@ TEST_MW_*
 .pre-commit-config.yaml
 .vscode/
 HEPTools/*
+HEPToolstemr/
+models/
 MG5/*
 *.tar.gz
 *.tgz
@@ -68,6 +71,7 @@ py.py
 vendor/CutTools/includects/
 mg5decay/mysmallmodel
 tests/input_files/*/*.pkl
+tests/input_files/IOTestsComparison_BackUp/
 vendor/StdHEP/log.*
 tmp
 check_sa_born_splitOrders.f

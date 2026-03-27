@@ -858,6 +858,19 @@ class MultVariable(array):
 
         return product.replace(E("j"),N(1j))
 
+    def spenso_parameters(self):
+        """Return the flattened spenso parameters for this object."""
+
+        from symbolica.community.spenso import TensorNetwork
+
+        return list(TensorNetwork(self.to_spenso()).result_tensor())
+
+    def register_to_spenso_library(self, library):
+        """Register any fixed spenso tensor data carried by this object."""
+
+        for n in self:
+            KERNEL.objs[n].register_to_spenso_library(library)
+
 
 
     def factorize(self):
@@ -1103,6 +1116,11 @@ class LorentzObject(object):
 
     def __str__(self):
         return '%s' % self.name
+
+    def register_to_spenso_library(self, library):
+        """Register any fixed spenso tensor data carried by this object."""
+
+        return None
 
 class FactoryLorentz(FactoryVar):
     """ A symbolic Object for All Helas object. All Helas Object Should
