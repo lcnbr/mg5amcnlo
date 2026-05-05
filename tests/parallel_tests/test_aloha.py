@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import absolute_import
 import math
 import os
+import subprocess
+import unittest as py_unittest
 
 from posix import environ
 import time
@@ -3990,6 +3992,48 @@ class TestAlohaWriter(unittest.TestCase):
             params.extend(repr(param) for param in obj.spenso_parameters())
         return params
 
+    def _cpp_compiler(self):
+        compiler = os.environ.get('CXX')
+        if compiler:
+            return compiler
+        return misc.which('clang++') or misc.which('g++') or misc.which('c++')
+
+    def _compile_and_run_cpp_eval(self, tmpdir, label, routine_name, source,
+                                  driver, header=None):
+        compiler = self._cpp_compiler()
+        if not compiler:
+            raise py_unittest.SkipTest('No C++ compiler available.')
+
+        case_dir = os.path.join(tmpdir, label)
+        os.mkdir(case_dir)
+        source_path = os.path.join(case_dir, routine_name + '.cpp')
+        driver_path = os.path.join(case_dir, label + '_driver.cpp')
+        exe_path = os.path.join(case_dir, label)
+        with open(source_path, 'w') as stream:
+            stream.write(source)
+        if header is not None:
+            with open(os.path.join(case_dir, routine_name + '.h'), 'w') as stream:
+                stream.write(header)
+        with open(driver_path, 'w') as stream:
+            stream.write(driver)
+
+        subprocess.check_call([
+            compiler, '-std=c++11', source_path, driver_path, '-o', exe_path
+        ])
+        output = subprocess.check_output([exe_path])
+        if not isinstance(output, str):
+            output = output.decode()
+        return [
+            complex(float(real), float(imag))
+            for real, imag in (line.split() for line in output.splitlines())
+        ]
+
+    def _assert_complex_lists_almost_equal(self, left, right, places=12):
+        self.assertEqual(len(left), len(right))
+        for lvalue, rvalue in zip(left, right):
+            self.assertAlmostEqual(lvalue.real, rvalue.real, places=places)
+            self.assertAlmostEqual(lvalue.imag, rvalue.imag, places=places)
+
     @set_global()
     def test_get_custom_propa(self):
 
@@ -5349,6 +5393,108 @@ P1(3) = -dimag(F1(1))
             '// ALOHA spenso parameters: [%s]' % ', '.join(expected_params),
             routine
         )
+
+    def test_short_spenso_cpp_eval_matches_cpp(self):
+        """test spenso wrapped C++ evaluates like normal generated C++"""
+
+        aloha_lib.KERNEL.clean()
+
+        VVS1 = UFOLorentz(name = 'VVS1',
+                 spins = [ 3, 3, 1 ],
+                 structure = 'Metric(1,2)')
+
+        amp = create_aloha.AbstractRoutineBuilder(VVS1).compute_routine(
+            1, [], keep_abstract=True
+        )
+        normal_h, normal_c = amp.write(output_dir=None, language='CPP')
+        spenso_c = amp.write(output_dir=None, language='spenso')
+        vvs_driver = """
+#include <complex>
+#include <iomanip>
+#include <iostream>
+
+void VVS1_1(std::complex<double> V2[], std::complex<double> S3[],
+            std::complex<double> COUP, double M1, double W1,
+            std::complex<double> V1[]);
+
+int main() {
+    std::complex<double> V2[6] = {
+        {1.1, -0.4}, {0.3, 0.8}, {0.7, -0.2},
+        {-0.1, 0.5}, {1.3, 0.9}, {-0.6, 0.4}
+    };
+    std::complex<double> S3[3] = {
+        {-0.2, 0.6}, {0.9, -0.7}, {1.2, -0.3}
+    };
+    std::complex<double> V1[6] = {};
+    VVS1_1(V2, S3, std::complex<double>(0.8, -0.25), 2.3, 0.17, V1);
+    for (int i = 0; i < 6; ++i) {
+        std::cout << std::setprecision(17)
+                  << V1[i].real() << " " << V1[i].imag() << "\\n";
+    }
+    return 0;
+}
+"""
+
+        aloha_lib.KERNEL.clean()
+
+        VVV1 = UFOLorentz(name = 'VVV1',
+                 spins = [ 3, 3, 3 ],
+                 structure = (
+                     'P(3,1)*Metric(1,2)-P(3,2)*Metric(1,2)'
+                     '-P(2,1)*Metric(1,3)+P(2,3)*Metric(1,3)'
+                     '+P(1,2)*Metric(2,3)-P(1,3)*Metric(2,3)'
+                 ))
+
+        amp = create_aloha.AbstractRoutineBuilder(VVV1).compute_routine(
+            1, [], keep_abstract=True
+        )
+        vvv_normal_h, vvv_normal_c = amp.write(output_dir=None, language='CPP')
+        vvv_spenso_c = amp.write(output_dir=None, language='spenso')
+        vvv_driver = """
+#include <complex>
+#include <iomanip>
+#include <iostream>
+
+void VVV1_1(std::complex<double> V2[], std::complex<double> V3[],
+            std::complex<double> COUP, double M1, double W1,
+            std::complex<double> V1[]);
+
+int main() {
+    std::complex<double> V2[6] = {
+        {0.4, -0.9}, {1.1, 0.2}, {0.7, -0.3},
+        {-0.8, 0.6}, {0.5, 1.4}, {-1.2, 0.1}
+    };
+    std::complex<double> V3[6] = {
+        {-0.6, 0.3}, {0.2, -1.0}, {1.5, 0.4},
+        {-0.7, -0.2}, {0.9, -1.1}, {0.3, 0.8}
+    };
+    std::complex<double> V1[6] = {};
+    VVV1_1(V2, V3, std::complex<double>(-0.45, 0.35), 1.9, 0.11, V1);
+    for (int i = 0; i < 6; ++i) {
+        std::cout << std::setprecision(17)
+                  << V1[i].real() << " " << V1[i].imag() << "\\n";
+    }
+    return 0;
+}
+"""
+
+        with tempfile.TemporaryDirectory(prefix='aloha-spenso-eval-') as tmpdir:
+            normal_values = self._compile_and_run_cpp_eval(
+                tmpdir, 'normal_vvs', 'VVS1_1', normal_c, vvs_driver, normal_h
+            )
+            spenso_values = self._compile_and_run_cpp_eval(
+                tmpdir, 'spenso_vvs', 'VVS1_1', spenso_c, vvs_driver
+            )
+            self._assert_complex_lists_almost_equal(normal_values, spenso_values)
+
+            normal_values = self._compile_and_run_cpp_eval(
+                tmpdir, 'normal_vvv', 'VVV1_1', vvv_normal_c, vvv_driver,
+                vvv_normal_h
+            )
+            spenso_values = self._compile_and_run_cpp_eval(
+                tmpdir, 'spenso_vvv', 'VVV1_1', vvv_spenso_c, vvv_driver
+            )
+            self._assert_complex_lists_almost_equal(normal_values, spenso_values)
 
     def test_short_spenso_params_follow_cpp_argument_order(self):
         """test spenso params are built from the normal C++ call arguments"""
