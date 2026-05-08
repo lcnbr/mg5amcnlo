@@ -4103,7 +4103,9 @@ class TestAlohaWriter(unittest.TestCase):
 
     def _run_spenso_eval_case(self, tmpdir, label, lorentz, outgoing,
                               input_arrays, call_args, output_name,
-                              output_len=None, conjugate=False):
+                              output_len=None, conjugate=False,
+                              spenso_language='spenso',
+                              spenso_options=None):
         aloha_lib.KERNEL.clean()
 
         builder = create_aloha.AbstractRoutineBuilder(lorentz)
@@ -4112,7 +4114,15 @@ class TestAlohaWriter(unittest.TestCase):
         amp = builder.compute_routine(outgoing, [], keep_abstract=True)
 
         normal_h, normal_c = amp.write(output_dir=None, language='CPP')
-        spenso_c = amp.write(output_dir=None, language='spenso')
+        spenso_output = amp.write(
+            output_dir=None,
+            language=spenso_language,
+            options=spenso_options
+        )
+        if isinstance(spenso_output, tuple):
+            spenso_h, spenso_c = spenso_output
+        else:
+            spenso_h, spenso_c = None, spenso_output
         routine_name, prototype = self._extract_cpp_prototype(normal_h, amp.name)
         driver = self._make_cpp_eval_driver(
             prototype, routine_name, input_arrays, call_args, output_name,
@@ -4123,7 +4133,7 @@ class TestAlohaWriter(unittest.TestCase):
             tmpdir, 'normal_' + label, routine_name, normal_c, driver, normal_h
         )
         spenso_values = self._compile_and_run_cpp_eval(
-            tmpdir, 'spenso_' + label, routine_name, spenso_c, driver
+            tmpdir, 'spenso_' + label, routine_name, spenso_c, driver, spenso_h
         )
         self._assert_complex_lists_almost_equal(normal_values, spenso_values)
 
@@ -5688,6 +5698,70 @@ int main() {
                 ['V1', 'S2', 'S3', vertex_coup, 'vertex'],
                 'vertex'
             )
+
+    def test_short_cpp_backend_option_can_use_spenso(self):
+        """test that the CPP language key can opt into the spenso backend"""
+
+        VVS1 = UFOLorentz(name='VVS1',
+                 spins=[3, 3, 1],
+                 structure='Metric(1,2)')
+
+        v2 = [
+            complex(1.1, -0.4), complex(0.3, 0.8), complex(0.7, -0.2),
+            complex(-0.1, 0.5), complex(1.3, 0.9), complex(-0.6, 0.4)
+        ]
+        s3 = [
+            complex(-0.2, 0.6), complex(0.9, -0.7), complex(1.2, -0.3)
+        ]
+
+        aloha_lib.KERNEL.clean()
+        amp = create_aloha.AbstractRoutineBuilder(VVS1).compute_routine(
+            1, [], keep_abstract=True
+        )
+        header, source = amp.write(
+            output_dir=None,
+            language='CPP',
+            options={'cpp_backend': 'spenso'}
+        )
+
+        self.assertIn('void VVS1_1(', header)
+        self.assertIn('VVS1_1_complexf64(spenso_params, spenso_buffer, spenso_out);',
+                      source)
+
+        with tempfile.TemporaryDirectory(prefix='aloha-spenso-eval-') as tmpdir:
+            self._run_spenso_eval_case(
+                tmpdir, 'cpp_backend_spenso_vvs', VVS1, 1,
+                [('V2', v2), ('S3', s3)],
+                ['V2', 'S3', self._cpp_complex(complex(0.8, -0.25)),
+                 '2.3', '0.17', 'V1'],
+                'V1', 6,
+                spenso_language='CPP',
+                spenso_options={'cpp_backend': 'spenso'}
+            )
+
+    def test_short_spenso_cpp_backend_option_with_aloha_model_subset(self):
+        """test model-level generation keeps abstract data for spenso C++"""
+
+        aloha_lib.KERNEL.clean()
+        aloha_model = create_aloha.AbstractALOHAModel('sm')
+        aloha_model.compute_subset(
+            [(('VVS1',), (), 1)],
+            keep_abstract=True
+        )
+
+        routine = aloha_model.get('VVS1', 1)
+        self.assertTrue(hasattr(routine, 'abstract'))
+
+        header, source = routine.write(
+            output_dir=None,
+            language='CPP',
+            mode='no_include',
+            options={'cpp_backend': 'spenso'}
+        )
+
+        self.assertIn('void VVS1_1(', header)
+        self.assertIn('VVS1_1_complexf64(spenso_params, spenso_buffer, spenso_out);',
+                      source)
 
     def test_short_spenso_params_follow_cpp_argument_order(self):
         """test spenso params are built from the normal C++ call arguments"""

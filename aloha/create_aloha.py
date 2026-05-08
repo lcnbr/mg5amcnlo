@@ -861,7 +861,8 @@ class AbstractALOHAModel(dict):
     
         self[(lorentzname, outgoing)] = abstract_routine
     
-    def compute_all(self, save=True, wanted_lorentz = [], custom_propa=False):
+    def compute_all(self, save=True, wanted_lorentz = [], custom_propa=False,
+                    keep_abstract=False):
         """ define all the AbstractRoutine linked to a model """
 
         # Search identical particles in the vertices in order to avoid
@@ -910,7 +911,8 @@ class AbstractALOHAModel(dict):
                                     routines.append((i+1, new_prop))
 
             builder = AbstractRoutineBuilder(lorentz, self.model)
-            self.compute_aloha(builder, routines=routines)
+            self.compute_aloha(builder, routines=routines,
+                               keep_abstract=keep_abstract)
 
             if lorentz.name in self.multiple_lor:
                 for m in self.multiple_lor[lorentz.name]:
@@ -927,7 +929,8 @@ class AbstractALOHAModel(dict):
                 for conjg_builder in conjg_builder_list:
                     # No duplication of conjugation:
                     assert conjg_builder_list.count(conjg_builder) == 1
-                    self.compute_aloha(conjg_builder, lorentz.name)
+                    self.compute_aloha(conjg_builder, lorentz.name,
+                                       keep_abstract=keep_abstract)
                     if lorentz.name in self.multiple_lor:
                         for m in self.multiple_lor[lorentz.name]:
                             for outgoing in range(len(lorentz.spins)+1):
@@ -947,7 +950,7 @@ class AbstractALOHAModel(dict):
             if not hasattr(self.model.lorentz, lor.name):
                 setattr(self.model.lorentz, lor.name, lor)
     
-    def compute_subset(self, data):
+    def compute_subset(self, data, keep_abstract=False):
         """ create the requested ALOHA routine. 
         data should be a list of tuple (lorentz, tag, outgoing)
         tag should be the list of special tag (like conjugation on pair)
@@ -1024,13 +1027,15 @@ class AbstractALOHAModel(dict):
                 routines.sort(key=misc.cmp_to_key(sorting))
                 if not conjg:
                     # No need to conjugate -> compute directly
-                    self.compute_aloha(builder, routines=routines)
+                    self.compute_aloha(builder, routines=routines,
+                                       keep_abstract=keep_abstract)
                 else:
                     # Define the high level conjugate routine
                     conjg_builder = builder.define_conjugate_builder(conjg)
                     # Compute routines
                     self.compute_aloha(conjg_builder, symmetry=lorentz.name,
-                                         routines=routines)
+                                         routines=routines,
+                                         keep_abstract=keep_abstract)
             
         
         # Build mutiple lorentz call
@@ -1067,17 +1072,20 @@ class AbstractALOHAModel(dict):
                     routines.sort(key=operator.itemgetter(0))
                     if not conjg:
                         # No need to conjugate -> compute directly
-                        self.compute_aloha(builder, routines=routines)
+                        self.compute_aloha(builder, routines=routines,
+                                           keep_abstract=keep_abstract)
                     else:
                         # Define the high level conjugate routine
                         conjg_builder = builder.define_conjugate_builder(conjg)
                         # Compute routines
                         self.compute_aloha(conjg_builder, symmetry=lorentz.name,
-                                        routines=routines)
+                                        routines=routines,
+                                        keep_abstract=keep_abstract)
         
         logger.info("aloha creates %s routines in  %0.3f s", AbstractRoutineBuilder.counter, time.time()-start)
                             
-    def compute_aloha(self, builder, symmetry=None, routines=None, tag=[]):
+    def compute_aloha(self, builder, symmetry=None, routines=None, tag=[],
+                      keep_abstract=False):
         """ define all the AbstractRoutine linked to a given lorentz structure
         symmetry authorizes to use the symmetry of anoter lorentz structure.
         routines to define only a subset of the routines."""
@@ -1103,7 +1111,9 @@ class AbstractALOHAModel(dict):
             if symmetric:
                 self.get(realname, symmetric).add_symmetry(outgoing)
             else:
-                wavefunction = builder.compute_routine(outgoing, tag)
+                wavefunction = builder.compute_routine(
+                    outgoing, tag, keep_abstract=keep_abstract
+                )
                 #Store the information
                 self.set(realname, outgoing, wavefunction)
           
@@ -1394,7 +1404,6 @@ if '__main__' == __name__:
     stop = time.time()
     logger.info('done in %s s' % (stop-start))
   
-
 
 
 

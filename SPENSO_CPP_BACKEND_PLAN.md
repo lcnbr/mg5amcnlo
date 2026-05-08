@@ -13,6 +13,9 @@ runtime replacement should not require a user-facing compatibility mode.
 
 - `ALOHAWriterForSpenso` emits a raw Symbolica/spenso evaluator plus a
   HELAS-shaped C++ wrapper.
+- `language='CPP'` can opt into the spenso-backed writer contract with
+  `options={'cpp_backend': 'spenso'}` while the normal C++ writer remains the
+  default oracle.
 - The wrapper builds `spenso_params` from the normal ALOHA C++ call argument
   order.
 - Input momenta are packed adjacent to their wavefunction parameters where the
@@ -21,6 +24,8 @@ runtime replacement should not require a user-facing compatibility mode.
   tensor-network path rather than hard-coded.
 - Source-level tests cover VVS, FFV, and VVV wrapper shape and parameter
   packing.
+- Model-level subset generation can preserve abstract expressions for the
+  spenso-backed C++ option.
 - Eval-level tests now compile normal C++ and spenso C++ for VVS/VVV plus
   SSS/FFS/FFV/SSV/VSS routines, run both with identical inputs, and compare
   scalar, spinor, vector, and vertex HELAS outputs.
@@ -64,7 +69,9 @@ runtime replacement should not require a user-facing compatibility mode.
 - Trace all places that request `language='CPP'` through `WriterFactory` and
   process export.
 - Add test-only plumbing that can generate a small process once through normal
-  C++ and once through spenso C++, then compile both outputs.
+  C++ and once through spenso C++, then compile both outputs. Routine-level and
+  model-subset plumbing are in place; process-export compile coverage is still
+  pending.
 - Confirm generated headers, includes, auxiliary functions, and makefiles do not
   assume the old direct-expression backend.
 - Make sure generated spenso files do not depend on temporary files or external

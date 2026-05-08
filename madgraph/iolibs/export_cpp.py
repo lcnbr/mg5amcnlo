@@ -380,20 +380,28 @@ class UFOModelConverterCPP(object):
         # commands and namespaces
         template_h_files = self.read_aloha_template_files(ext = 'h')
         template_cc_files = self.read_aloha_template_files(ext = 'cc')
+        aloha_options = {}
+        if (self.aloha_writer.lower() == 'cpp' and
+                self.default_replace_dict.get('aloha_cpp_backend') == 'spenso'):
+            aloha_options['cpp_backend'] = 'spenso'
+        keep_abstract = aloha_options.get('cpp_backend') == 'spenso'
 
         aloha_model = create_aloha.AbstractALOHAModel(self.model.get('name'),
                                                       explicit_combine=True)
         aloha_model.add_Lorentz_object(self.model.get('lorentz'))
         
         if self.wanted_lorentz:
-            aloha_model.compute_subset(self.wanted_lorentz)
+            aloha_model.compute_subset(self.wanted_lorentz,
+                                       keep_abstract=keep_abstract)
         else:
-            aloha_model.compute_all(save=False, custom_propa=True)
+            aloha_model.compute_all(save=False, custom_propa=True,
+                                    keep_abstract=keep_abstract)
             
         for abstracthelas in dict(aloha_model).values():
             h_rout, cc_rout = abstracthelas.write(output_dir=None, 
                                                   language=self.aloha_writer, 
-                                                  mode='no_include')
+                                                  mode='no_include',
+                                                  options=aloha_options)
 
             template_h_files.append(h_rout)
             template_cc_files.append(cc_rout)
@@ -3197,18 +3205,25 @@ class UFOModelConverterCPP(object):
         # commands and namespaces
         template_h_files = self.read_aloha_template_files(ext = 'h')
         template_cc_files = self.read_aloha_template_files(ext = 'cc')
+        aloha_options = {}
+        if self.default_replace_dict.get('aloha_cpp_backend') == 'spenso':
+            aloha_options['cpp_backend'] = 'spenso'
+        keep_abstract = aloha_options.get('cpp_backend') == 'spenso'
 
         aloha_model = create_aloha.AbstractALOHAModel(self.model.get('name'))
         aloha_model.add_Lorentz_object(self.model.get('lorentz'))
         
         if self.wanted_lorentz:
-            aloha_model.compute_subset(self.wanted_lorentz)
+            aloha_model.compute_subset(self.wanted_lorentz,
+                                       keep_abstract=keep_abstract)
         else:
-            aloha_model.compute_all(save=False, custom_propa=True)
+            aloha_model.compute_all(save=False, custom_propa=True,
+                                    keep_abstract=keep_abstract)
             
         for abstracthelas in dict(aloha_model).values():
             h_rout, cc_rout = abstracthelas.write(output_dir=None, language='CPP', 
-                                                              mode='no_include')
+                                                              mode='no_include',
+                                                              options=aloha_options)
 
             template_h_files.append(h_rout)
             template_cc_files.append(cc_rout)
@@ -3489,5 +3504,4 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
         return cmd._export_plugin(cmd._export_dir, opt)
 
     
-
 
