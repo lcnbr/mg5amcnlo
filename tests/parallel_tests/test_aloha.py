@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import absolute_import
 import math
 import os
+import re
 import subprocess
 import unittest as py_unittest
 
@@ -39,6 +40,7 @@ import tests.unit_tests as unittest
 import madgraph.various.misc as misc
 from six.moves import range
 from six.moves import zip
+from six import StringIO
 pjoin = os.path.join
 try:
     from symbolica.community.spenso import TensorNetwork,Representation,TensorName,TensorLibrary,LibraryTensor,TensorStructure
@@ -4034,6 +4036,97 @@ class TestAlohaWriter(unittest.TestCase):
             self.assertAlmostEqual(lvalue.real, rvalue.real, places=places)
             self.assertAlmostEqual(lvalue.imag, rvalue.imag, places=places)
 
+    def _extract_cpp_prototype(self, header, routine_name):
+        """Return the generated C++ routine name and declaration from a header."""
+
+        match = re.search(
+            r'void\s+%s\s*\([^;]*\);' % re.escape(routine_name),
+            header.replace('\n', ' ')
+        )
+        if not match:
+            match = re.search(r'void\s+([A-Za-z0-9_]+)\s*\([^;]*\);',
+                              header.replace('\n', ' '))
+        if not match:
+            raise AssertionError('Could not find C++ prototype.')
+        prototype = match.group(0)
+        function_match = re.match(r'void\s+([A-Za-z0-9_]+)\s*\(', prototype)
+        return function_match.group(1), prototype
+
+    def _cpp_complex(self, value):
+        return 'std::complex<double>(%.17g, %.17g)' % (value.real, value.imag)
+
+    def _cpp_complex_array(self, name, values):
+        entries = ', '.join(
+            '{%.17g, %.17g}' % (value.real, value.imag)
+            for value in values
+        )
+        return '    std::complex<double> %s[%d] = {%s};\n' % (
+            name, len(values), entries
+        )
+
+    def _make_cpp_eval_driver(self, prototype, routine_name, input_arrays,
+                              call_args, output_name, output_len=None):
+        """Build a tiny C++ main that calls one generated HELAS routine."""
+
+        driver = StringIO()
+        driver.write('#include <complex>\n')
+        driver.write('#include <iomanip>\n')
+        driver.write('#include <iostream>\n\n')
+        driver.write(prototype)
+        driver.write('\n\nint main() {\n')
+        for name, values in input_arrays:
+            driver.write(self._cpp_complex_array(name, values))
+
+        if output_len is None:
+            driver.write('    std::complex<double> %s = {0.0, 0.0};\n' %
+                         output_name)
+        else:
+            driver.write('    std::complex<double> %s[%d] = {};\n' %
+                         (output_name, output_len))
+
+        driver.write('    %s(%s);\n' % (routine_name, ', '.join(call_args)))
+
+        if output_len is None:
+            driver.write('    std::cout << std::setprecision(17)\n')
+            driver.write('              << %s.real() << " " ' % output_name)
+            driver.write('<< %s.imag() << "\\n";\n' % output_name)
+        else:
+            driver.write('    for (int i = 0; i < %d; ++i) {\n' % output_len)
+            driver.write('        std::cout << std::setprecision(17)\n')
+            driver.write('                  << %s[i].real() << " " ' %
+                         output_name)
+            driver.write('<< %s[i].imag() << "\\n";\n' % output_name)
+            driver.write('    }\n')
+        driver.write('    return 0;\n')
+        driver.write('}\n')
+        return driver.getvalue()
+
+    def _run_spenso_eval_case(self, tmpdir, label, lorentz, outgoing,
+                              input_arrays, call_args, output_name,
+                              output_len=None, conjugate=False):
+        aloha_lib.KERNEL.clean()
+
+        builder = create_aloha.AbstractRoutineBuilder(lorentz)
+        if conjugate:
+            builder.apply_conjugation()
+        amp = builder.compute_routine(outgoing, [], keep_abstract=True)
+
+        normal_h, normal_c = amp.write(output_dir=None, language='CPP')
+        spenso_c = amp.write(output_dir=None, language='spenso')
+        routine_name, prototype = self._extract_cpp_prototype(normal_h, amp.name)
+        driver = self._make_cpp_eval_driver(
+            prototype, routine_name, input_arrays, call_args, output_name,
+            output_len
+        )
+
+        normal_values = self._compile_and_run_cpp_eval(
+            tmpdir, 'normal_' + label, routine_name, normal_c, driver, normal_h
+        )
+        spenso_values = self._compile_and_run_cpp_eval(
+            tmpdir, 'spenso_' + label, routine_name, spenso_c, driver
+        )
+        self._assert_complex_lists_almost_equal(normal_values, spenso_values)
+
     @set_global()
     def test_get_custom_propa(self):
 
@@ -5495,6 +5588,106 @@ int main() {
                 tmpdir, 'spenso_vvv', 'VVV1_1', vvv_spenso_c, vvv_driver
             )
             self._assert_complex_lists_almost_equal(normal_values, spenso_values)
+
+    def test_short_spenso_cpp_eval_broad_shapes_match_cpp(self):
+        """test spenso eval parity for scalar, spinor, vector, and vertex outputs"""
+
+        s1 = [
+            complex(0.2, -0.7), complex(-0.4, 0.3), complex(1.1, -0.6)
+        ]
+        s2 = [
+            complex(-0.5, 0.4), complex(0.8, -0.2), complex(-1.2, 0.9)
+        ]
+        s3 = [
+            complex(0.7, -0.1), complex(-0.3, -0.8), complex(0.6, 0.5)
+        ]
+        f1 = [
+            complex(0.3, -0.2), complex(-0.7, 0.4), complex(1.1, 0.2),
+            complex(-0.5, 0.9), complex(0.8, -1.0), complex(-1.3, 0.6)
+        ]
+        f2 = [
+            complex(-0.2, 0.5), complex(0.9, -0.1), complex(-0.6, 0.8),
+            complex(1.4, -0.3), complex(-0.9, -0.7), complex(0.4, 1.2)
+        ]
+        v3 = [
+            complex(0.1, -0.6), complex(-0.8, 0.2), complex(0.5, 1.1),
+            complex(-1.0, 0.4), complex(1.3, -0.5), complex(-0.2, 0.7)
+        ]
+
+        coup = self._cpp_complex(complex(0.73, -0.41))
+        vertex_coup = self._cpp_complex(complex(-0.37, 0.52))
+
+        SSS1 = UFOLorentz(name='SSS1',
+                 spins=[1, 1, 1],
+                 structure='1')
+        FFS1 = UFOLorentz(name='FFS1',
+                 spins=[2, 2, 1],
+                 structure='Identity(2,1)')
+        FFV1 = UFOLorentz(name='FFV1',
+                 spins=[2, 2, 3],
+                 structure='Gamma(3,2,1)')
+        SSV1 = UFOLorentz(name='SSV1',
+                 spins=[1, 1, 3],
+                 structure='P(3,1)-P(3,2)')
+        VSS1 = UFOLorentz(name='VSS1',
+                 spins=[3, 1, 1],
+                 structure='P(1,2)-P(1,3)')
+
+        with tempfile.TemporaryDirectory(prefix='aloha-spenso-eval-') as tmpdir:
+            self._run_spenso_eval_case(
+                tmpdir, 'sss_scalar', SSS1, 1,
+                [('S2', s2), ('S3', s3)],
+                ['S2', 'S3', coup, '1.7', '0.13', 'S1'],
+                'S1', 3
+            )
+            self._run_spenso_eval_case(
+                tmpdir, 'ffs_spinor', FFS1, 1,
+                [('F2', f2), ('S3', s3)],
+                ['F2', 'S3', coup, '2.1', '0.23', 'F1'],
+                'F1', 6
+            )
+            self._run_spenso_eval_case(
+                tmpdir, 'ffv_vector', FFV1, 3,
+                [('F1', f1), ('F2', f2)],
+                ['F1', 'F2', coup, '2.4', '0.31', 'V3'],
+                'V3', 6
+            )
+            self._run_spenso_eval_case(
+                tmpdir, 'ssv_scalar', SSV1, 1,
+                [('S2', s2), ('V3', v3)],
+                ['S2', 'V3', coup, '1.9', '0.17', 'S1'],
+                'S1', 3
+            )
+            self._run_spenso_eval_case(
+                tmpdir, 'vss_vector', VSS1, 1,
+                [('S2', s2), ('S3', s3)],
+                ['S2', 'S3', coup, '2.2', '0.19', 'V1'],
+                'V1', 6
+            )
+            self._run_spenso_eval_case(
+                tmpdir, 'sss_vertex', SSS1, 0,
+                [('S1', s1), ('S2', s2), ('S3', s3)],
+                ['S1', 'S2', 'S3', vertex_coup, 'vertex'],
+                'vertex'
+            )
+            self._run_spenso_eval_case(
+                tmpdir, 'ffs_vertex', FFS1, 0,
+                [('F1', f1), ('F2', f2), ('S3', s3)],
+                ['F1', 'F2', 'S3', vertex_coup, 'vertex'],
+                'vertex'
+            )
+            self._run_spenso_eval_case(
+                tmpdir, 'ssv_vertex', SSV1, 0,
+                [('S1', s1), ('S2', s2), ('V3', v3)],
+                ['S1', 'S2', 'V3', vertex_coup, 'vertex'],
+                'vertex'
+            )
+            self._run_spenso_eval_case(
+                tmpdir, 'vss_vertex', VSS1, 0,
+                [('V1', v3), ('S2', s2), ('S3', s3)],
+                ['V1', 'S2', 'S3', vertex_coup, 'vertex'],
+                'vertex'
+            )
 
     def test_short_spenso_params_follow_cpp_argument_order(self):
         """test spenso params are built from the normal C++ call arguments"""

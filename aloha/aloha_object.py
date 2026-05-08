@@ -784,15 +784,15 @@ class L_Gamma(aloha_lib.LorentzObject):
 
     @staticmethod
     def spenso_tensor_structure():
-        mink = Representation.mink(4)
         bis = Representation.bis(4)
+        mink = Representation.mink(4)
         gamma = N("gamma")
-        return gamma(mink, bis, bis)
+        return gamma(bis, bis, mink)
 
     def to_spenso(self):
         gamma_ind = self.spenso_tensor_structure()
 
-        return gamma_ind(self.spin_ind[0], self.spin_ind[1],self.lorentz_ind[0])
+        return gamma_ind(self.spin_ind[0], self.spin_ind[1], self.lorentz_ind[0])
 
     def register_to_spenso_library(self, library):
         from symbolica.community.spenso import LibraryTensor
@@ -800,7 +800,7 @@ class L_Gamma(aloha_lib.LorentzObject):
         gamma_ind = self.spenso_tensor_structure()
         tensor = LibraryTensor.sparse(gamma_ind, Expression)
         for key, value in self.gamma.items():
-            tensor[list(key)] = _spenso_sparse_value(value)
+            tensor[[key[1], key[2], key[0]]] = _spenso_sparse_value(value)
         library.register(tensor)
 
 

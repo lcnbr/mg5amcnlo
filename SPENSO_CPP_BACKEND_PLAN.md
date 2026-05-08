@@ -21,8 +21,11 @@ runtime replacement should not require a user-facing compatibility mode.
   tensor-network path rather than hard-coded.
 - Source-level tests cover VVS, FFV, and VVV wrapper shape and parameter
   packing.
-- Eval-level tests now compile normal C++ and spenso C++ for VVS/VVV routines,
-  run both with identical inputs, and compare the full HELAS output arrays.
+- Eval-level tests now compile normal C++ and spenso C++ for VVS/VVV plus
+  SSS/FFS/FFV/SSV/VSS routines, run both with identical inputs, and compare
+  scalar, spinor, vector, and vertex HELAS outputs.
+- Gamma tensor registration now follows the emitted spenso index order
+  `(spin, spin, Lorentz)`, with object-level coverage to catch regressions.
 
 ## Phase 1: Expand Eval Parity
 
@@ -45,6 +48,7 @@ runtime replacement should not require a user-facing compatibility mode.
 
 - Use failed generation/eval cases as the inventory for missing `to_spenso`,
   `spenso_parameters`, and tensor-library registrations.
+- Try to cover the full range of sm structures.
 - Finish or verify support for all fixed tensors and special objects used by
   generated C++ routines:
   metric, identity, gamma matrices, charge conjugation, epsilon tensors,

@@ -44,6 +44,30 @@ class UFOLorentz(object):
 def read_parallel_test_input(*parts):
     with open(os.path.join(PARALLEL_TEST_INPUT_DIR, *parts)) as stream:
         return stream.read()
+
+
+class TestSpensoObjects(unittest.TestCase):
+   """Focused checks for ALOHA object conversion to spenso tensors."""
+
+   def setUp(self):
+      if 'TensorLibrary' not in globals():
+         self.skipTest('symbolica spenso support is not available.')
+
+   def test_gamma_spenso_index_order_matches_registered_tensor(self):
+      gamma = aloha_obj.Gamma(3, 2, 1).to_spenso()
+
+      self.assertEqual(
+         repr(gamma),
+         'spenso_python::gamma(spenso::bis(4,2),spenso::bis(4,1),'
+         'spenso::mink(4,3))'
+      )
+
+   def test_fixed_spenso_tensors_register(self):
+      library = TensorLibrary.construct()
+
+      aloha_obj.Gamma(1, 2, 3).register_to_spenso_library(library)
+      aloha_obj.C(1, 2).register_to_spenso_library(library)
+
 class IOTest_Spenso(IOTests.IOTestManager):
    @IOTests.createIOTest()
    def testIO_FFV1_spenso(self):
