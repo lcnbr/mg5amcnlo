@@ -5448,11 +5448,13 @@ P1(3) = -dimag(F1(1))
             'std::complex<double> *buffer, std::complex<double> *out)',
             routine
         )
+        self.assertIn('ALOHA_SPENSO_ALWAYS_INLINE void VVS1_1_complexf64_gen',
+                      routine)
         self.assertIn(normal_signature, routine)
         self.assertIn('spenso_params[0] = V2[2];', routine)
         self.assertIn('spenso_params[4] = S3[2];', routine)
         self.assertIn('spenso_params[5] = P1[0];', routine)
-        self.assertIn('VVS1_1_complexf64(spenso_params, spenso_buffer, spenso_out);', routine)
+        self.assertIn('VVS1_1_complexf64_gen(spenso_params, spenso_buffer, spenso_out);', routine)
         self.assertIn('V1[2]= denom*spenso_out[0];', routine)
         self.assertIn('V1[5]= denom*spenso_out[3];', routine)
 
@@ -5485,7 +5487,7 @@ P1(3) = -dimag(F1(1))
         self.assertIn('spenso_params[0] = V2[2];', routine)
         self.assertIn('spenso_params[4] = S3[2];', routine)
         self.assertIn('spenso_params[5] = P1[0];', routine)
-        self.assertIn('VVS1_1_complexf64(spenso_params, spenso_buffer, spenso_out);', routine)
+        self.assertIn('VVS1_1_complexf64_gen(spenso_params, spenso_buffer, spenso_out);', routine)
         self.assertIn('V1[2]= denom*spenso_out[0];', routine)
         self.assertIn('V1[5]= denom*spenso_out[3];', routine)
         spenso_writer = aloha_writers.ALOHAWriterForSpenso(amp, None)
@@ -5740,7 +5742,7 @@ int main() {
         )
 
         self.assertIn('void VVS1_1(', header)
-        self.assertIn('VVS1_1_complexf64(spenso_params, spenso_buffer, spenso_out);',
+        self.assertIn('VVS1_1_complexf64_gen(spenso_params, spenso_buffer, spenso_out);',
                       source)
 
         with tempfile.TemporaryDirectory(prefix='aloha-spenso-eval-') as tmpdir:
@@ -5775,7 +5777,7 @@ int main() {
         )
 
         self.assertIn('void VVS1_1(', header)
-        self.assertIn('VVS1_1_complexf64(spenso_params, spenso_buffer, spenso_out);',
+        self.assertIn('VVS1_1_complexf64_gen(spenso_params, spenso_buffer, spenso_out);',
                       source)
 
     def test_short_spenso_params_follow_cpp_argument_order(self):
@@ -5911,7 +5913,7 @@ int main() {
         self.assertIn('spenso_params[4] = V3[2];', routine)
         self.assertIn('spenso_params[8] = M2;', routine)
         self.assertIn('spenso_params[9] = P2[0];', routine)
-        self.assertIn('FFV1C1_1_complexf64(spenso_params, spenso_buffer, spenso_out);', routine)
+        self.assertIn('FFV1C1_1_complexf64_gen(spenso_params, spenso_buffer, spenso_out);', routine)
         self.assertIn('F2[2]= denom*spenso_out[0];', routine)
         self.assertIn('F2[5]= denom*spenso_out[3];', routine)
 

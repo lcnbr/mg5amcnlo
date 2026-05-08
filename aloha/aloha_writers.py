@@ -2390,7 +2390,7 @@ class ALOHAWriterForSpenso(ALOHAWriterForCPP):
             out.write('    spenso_params[%d] = %s;\n' % (
                 index, self._spenso_param_cpp_expr(name, component)
             ))
-        out.write('    %s_complexf64(spenso_params, spenso_buffer, spenso_out);\n' % self.name)
+        out.write('    %s_complexf64_gen(spenso_params, spenso_buffer, spenso_out);\n' % self.name)
 
         coup_name = self._get_coupling_name()
         if not self.offshell:
@@ -2500,6 +2500,30 @@ class ALOHAWriterForSpenso(ALOHAWriterForCPP):
         ]
         return '\n'.join(lines) + '\n'
 
+    def _inline_evaluator_source(self, evaluator_source):
+        """Make the generated templated evaluator inlineable by the wrapper."""
+
+        inline_macro = (
+            '#ifndef ALOHA_SPENSO_ALWAYS_INLINE\n'
+            '#if defined(__GNUC__) || defined(__clang__)\n'
+            '#define ALOHA_SPENSO_ALWAYS_INLINE inline __attribute__((always_inline))\n'
+            '#else\n'
+            '#define ALOHA_SPENSO_ALWAYS_INLINE inline\n'
+            '#endif\n'
+            '#endif\n\n'
+        )
+        pattern = (
+            r'(template\s*<\s*typename\s+T\s*>\s*)'
+            r'void(\s+%s_complexf64_gen\s*\()'
+            % re.escape(self.name)
+        )
+        evaluator_source = re.sub(
+            pattern,
+            r'\1ALOHA_SPENSO_ALWAYS_INLINE void\2',
+            evaluator_source
+        )
+        return inline_macro + evaluator_source
+
     def _define_spenso_output(self, mode=None, include_evaluator_includes=True):
         self.mode = mode
 
@@ -2531,7 +2555,7 @@ class ALOHAWriterForSpenso(ALOHAWriterForCPP):
         evaluator_source = self._compile_cpp(evaluator, self.name)
         header = '// ALOHA spenso expression: %s\n' % repr(spenso_expr)
         header += '// ALOHA spenso parameters: [%s]\n' % ', '.join(repr(param) for param in params)
-        evaluator_source = header + evaluator_source
+        evaluator_source = header + self._inline_evaluator_source(evaluator_source)
         if not include_evaluator_includes:
             evaluator_source = self._strip_evaluator_includes(evaluator_source)
 
