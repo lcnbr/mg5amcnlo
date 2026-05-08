@@ -2558,7 +2558,8 @@ class ProcessExporterCPP(VirtualExporter):
 
     default_opt = {'clean': False, 'complex_mass':False,
                         'export_format':'madevent', 'mp': False,
-                        'v5_model': True
+                        'v5_model': True,
+                        'output_options': {}
                         }
     
     oneprocessclass = OneProcessExporterCPP
@@ -2640,6 +2641,15 @@ class ProcessExporterCPP(VirtualExporter):
             
         return False, matrix_element
 
+    def get_model_replace_dict(self):
+        """Return model-converter options derived from output command options."""
+
+        replace_dict = {}
+        output_options = self.opt.get('output_options') or {}
+        if output_options.get('aloha_cpp_backend') == 'spenso':
+            replace_dict['aloha_cpp_backend'] = 'spenso'
+        return replace_dict
+
 
 
     def convert_model(self, model, wanted_lorentz = [],
@@ -2648,7 +2658,8 @@ class ProcessExporterCPP(VirtualExporter):
         model_builder = self.create_model_class(model,
                                          os.path.join(self.dir_path, 'src'),
                                          wanted_lorentz,
-                                         wanted_couplings)
+                                         wanted_couplings,
+                                         replace_dict=self.get_model_replace_dict())
         model_builder.write_files()
     
     def compile_model(self):

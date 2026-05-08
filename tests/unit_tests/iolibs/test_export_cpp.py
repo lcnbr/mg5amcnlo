@@ -1421,6 +1421,31 @@ class ExportUFOModelCPPSpensoTest(unittest.TestCase):
         self.assertTrue(calls[0]['keep_abstract'])
         self.assertFalse(calls[0]['custom_propa'])
 
+    def test_standalone_cpp_model_conversion_can_use_spenso(self):
+        """Test standalone_cpp forwards the spenso ALOHA backend option."""
+        try:
+            import symbolica.community.spenso  # noqa: F401
+        except ImportError:
+            self.skipTest('symbolica spenso support is not available.')
+
+        model = import_ufo.import_model(import_ufo.find_ufo_path('sm'))
+        with tempfile.TemporaryDirectory(prefix='aloha-spenso-standalone-') as tmpdir:
+            exporter = export_cpp.ProcessExporterCPP(
+                tmpdir,
+                opt={'output_options': {'aloha_cpp_backend': 'spenso'}})
+            exporter.convert_model(
+                model,
+                wanted_lorentz=[(('VVS1',), (), 1)])
+
+            helamps_cc = pjoin(tmpdir, 'src', 'HelAmps_sm.cc')
+            self.assertTrue(os.path.isfile(helamps_cc))
+            with open(helamps_cc) as stream:
+                helamps_source = stream.read()
+
+            self.assertIn('VVS1_1_complexf64(spenso_params, spenso_buffer, spenso_out);',
+                          helamps_source)
+            self.assertNotIn('#include <complex.h>', helamps_source)
+
 
 #===============================================================================
 # ExportUFOModelPythia8Test

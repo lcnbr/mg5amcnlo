@@ -32,6 +32,9 @@ runtime replacement should not require a user-facing compatibility mode.
 - Export-level coverage now writes SM C++ model files for a small Lorentz subset
   through the spenso-backed `CPP` option and compiles the generated
   `HelAmps_sm.cc`.
+- `standalone_cpp` model conversion can request the spenso-backed HELAS
+  substitute with `--aloha_cpp_backend=spenso`, which forwards to the
+  `UFOModelConverterCPP` ALOHA writer selection.
 - Chiral projectors `ProjM` and `ProjP` now serialize as fixed spenso tensors,
   with projector spinor and vertex eval parity coverage.
 - Gamma tensor registration now follows the emitted spenso index order
@@ -129,4 +132,8 @@ uv run python -m unittest tests.unit_tests.iolibs.test_export_cpp.ExportUFOModel
 
 ```bash
 uv run python -m unittest tests.unit_tests.iolibs.test_export_cpp.ExportUFOModelCPPSpensoTest
+```
+
+```text
+output standalone_cpp /tmp/mg5_spenso_standalone_cpp --aloha_cpp_backend=spenso -f
 ```
