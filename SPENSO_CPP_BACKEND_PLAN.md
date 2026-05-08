@@ -32,8 +32,13 @@ runtime replacement should not require a user-facing compatibility mode.
 - Export-level coverage now writes SM C++ model files for a small Lorentz subset
   through the spenso-backed `CPP` option and compiles the generated
   `HelAmps_sm.cc`.
+- Chiral projectors `ProjM` and `ProjP` now serialize as fixed spenso tensors,
+  with projector spinor and vertex eval parity coverage.
 - Gamma tensor registration now follows the emitted spenso index order
   `(spin, spin, Lorentz)`, with object-level coverage to catch regressions.
+- Full-SM spenso generation now proceeds past projector structures and currently
+  exposes custom propagator helper objects such as `UFP`/`UFPC` as the next
+  unsupported tensor family.
 
 ## Phase 1: Expand Eval Parity
 
@@ -59,9 +64,9 @@ runtime replacement should not require a user-facing compatibility mode.
 - Try to cover the full range of sm structures.
 - Finish or verify support for all fixed tensors and special objects used by
   generated C++ routines:
-  metric, identity, gamma matrices, charge conjugation, epsilon tensors,
-  masses, widths, couplings, momenta, complex masses, spinors, vectors,
-  scalars, and tensor wavefunctions.
+  metric, identity, gamma matrices, chiral projectors, charge conjugation,
+  epsilon tensors, masses, widths, couplings, momenta, complex masses, spinors,
+  vectors, scalars, and tensor wavefunctions.
 - Keep expected parameter lists derived from `TensorNetwork(...).result_tensor()`
   so tests exercise the same expansion path as code generation.
 - Avoid adding backend-specific ordering exceptions unless they follow from the

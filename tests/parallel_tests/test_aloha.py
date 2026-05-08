@@ -5633,6 +5633,9 @@ int main() {
         FFS1 = UFOLorentz(name='FFS1',
                  spins=[2, 2, 1],
                  structure='Identity(2,1)')
+        FFS2 = UFOLorentz(name='FFS2',
+                 spins=[2, 2, 1],
+                 structure='ProjM(2,1)-ProjP(2,1)')
         FFV1 = UFOLorentz(name='FFV1',
                  spins=[2, 2, 3],
                  structure='Gamma(3,2,1)')
@@ -5652,6 +5655,12 @@ int main() {
             )
             self._run_spenso_eval_case(
                 tmpdir, 'ffs_spinor', FFS1, 1,
+                [('F2', f2), ('S3', s3)],
+                ['F2', 'S3', coup, '2.1', '0.23', 'F1'],
+                'F1', 6
+            )
+            self._run_spenso_eval_case(
+                tmpdir, 'ffs_projector_spinor', FFS2, 1,
                 [('F2', f2), ('S3', s3)],
                 ['F2', 'S3', coup, '2.1', '0.23', 'F1'],
                 'F1', 6
@@ -5682,6 +5691,12 @@ int main() {
             )
             self._run_spenso_eval_case(
                 tmpdir, 'ffs_vertex', FFS1, 0,
+                [('F1', f1), ('F2', f2), ('S3', s3)],
+                ['F1', 'F2', 'S3', vertex_coup, 'vertex'],
+                'vertex'
+            )
+            self._run_spenso_eval_case(
+                tmpdir, 'ffs_projector_vertex', FFS2, 0,
                 [('F1', f1), ('F2', f2), ('S3', s3)],
                 ['F1', 'F2', 'S3', vertex_coup, 'vertex'],
                 'vertex'

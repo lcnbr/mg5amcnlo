@@ -2253,7 +2253,8 @@ class ALOHAWriterForSpenso(ALOHAWriterForCPP):
         import aloha.aloha_object as aloha_object
 
         library = TensorLibrary.construct()
-        for obj in (aloha_object.Gamma(1, 2, 3), aloha_object.C(1, 2)):
+        for obj in (aloha_object.Gamma(1, 2, 3), aloha_object.C(1, 2),
+                    aloha_object.ProjM(1, 2), aloha_object.ProjP(1, 2)):
             obj.register_to_spenso_library(library)
         return library
 

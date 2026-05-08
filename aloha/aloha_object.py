@@ -1229,6 +1229,25 @@ class L_ProjM(aloha_lib.LorentzObject):
         self.representation = aloha_lib.LorentzObjectRepresentation(self.projm,
                                              self.lorentz_ind,self.spin_ind)
 
+    @staticmethod
+    def spenso_tensor_structure():
+        bis = Representation.bis(4)
+        proj_m = N("proj_m")
+        return proj_m(bis, bis)
+
+    def to_spenso(self):
+        proj_m = self.spenso_tensor_structure()
+        return proj_m(self.spin_ind[0], self.spin_ind[1])
+
+    def register_to_spenso_library(self, library):
+        from symbolica.community.spenso import LibraryTensor
+
+        proj_m = self.spenso_tensor_structure()
+        tensor = LibraryTensor.sparse(proj_m, Expression)
+        for key, value in self.projm.items():
+            tensor[list(key)] = _spenso_sparse_value(value)
+        library.register(tensor)
+
 class ProjM(aloha_lib.FactoryLorentz):
 
     object_class = L_ProjM
@@ -1257,6 +1276,25 @@ class L_ProjP(aloha_lib.LorentzObject):
 
         self.representation = aloha_lib.LorentzObjectRepresentation(self.projp,
                                             self.lorentz_ind, self.spin_ind)
+
+    @staticmethod
+    def spenso_tensor_structure():
+        bis = Representation.bis(4)
+        proj_p = N("proj_p")
+        return proj_p(bis, bis)
+
+    def to_spenso(self):
+        proj_p = self.spenso_tensor_structure()
+        return proj_p(self.spin_ind[0], self.spin_ind[1])
+
+    def register_to_spenso_library(self, library):
+        from symbolica.community.spenso import LibraryTensor
+
+        proj_p = self.spenso_tensor_structure()
+        tensor = LibraryTensor.sparse(proj_p, Expression)
+        for key, value in self.projp.items():
+            tensor[list(key)] = _spenso_sparse_value(value)
+        library.register(tensor)
 
 class ProjP(aloha_lib.FactoryLorentz):
 

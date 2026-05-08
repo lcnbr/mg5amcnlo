@@ -67,6 +67,18 @@ class TestSpensoObjects(unittest.TestCase):
 
       aloha_obj.Gamma(1, 2, 3).register_to_spenso_library(library)
       aloha_obj.C(1, 2).register_to_spenso_library(library)
+      aloha_obj.ProjM(1, 2).register_to_spenso_library(library)
+      aloha_obj.ProjP(1, 2).register_to_spenso_library(library)
+
+   def test_projectors_spenso_index_order(self):
+      self.assertEqual(
+         repr(aloha_obj.ProjM(2, 1).to_spenso()),
+         'spenso_python::proj_m(spenso::bis(4,2),spenso::bis(4,1))'
+      )
+      self.assertEqual(
+         repr(aloha_obj.ProjP(2, 1).to_spenso()),
+         'spenso_python::proj_p(spenso::bis(4,2),spenso::bis(4,1))'
+      )
 
 class IOTest_Spenso(IOTests.IOTestManager):
    @IOTests.createIOTest()
