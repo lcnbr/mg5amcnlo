@@ -1397,6 +1397,30 @@ class ExportUFOModelCPPSpensoTest(unittest.TestCase):
             except subprocess.CalledProcessError as error:
                 self.fail(error.output.decode('utf-8', 'replace'))
 
+    def test_spenso_full_model_export_skips_custom_propagators(self):
+        """Test full spenso model export avoids unsupported custom propagators."""
+        model = import_ufo.import_model(import_ufo.find_ufo_path('sm'))
+        original_compute_all = create_aloha.AbstractALOHAModel.compute_all
+        calls = []
+
+        def record_compute_all(aloha_model, *args, **opts):
+            calls.append(opts)
+
+        create_aloha.AbstractALOHAModel.compute_all = record_compute_all
+        try:
+            with tempfile.TemporaryDirectory(prefix='aloha-spenso-export-') as tmpdir:
+                model_builder = export_cpp.UFOModelConverterCPP(
+                    model,
+                    tmpdir,
+                    replace_dict={'aloha_cpp_backend': 'spenso'})
+                model_builder.write_aloha_routines()
+        finally:
+            create_aloha.AbstractALOHAModel.compute_all = original_compute_all
+
+        self.assertEqual(1, len(calls))
+        self.assertTrue(calls[0]['keep_abstract'])
+        self.assertFalse(calls[0]['custom_propa'])
+
 
 #===============================================================================
 # ExportUFOModelPythia8Test

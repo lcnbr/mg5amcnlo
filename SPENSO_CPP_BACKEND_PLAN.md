@@ -36,9 +36,9 @@ runtime replacement should not require a user-facing compatibility mode.
   with projector spinor and vertex eval parity coverage.
 - Gamma tensor registration now follows the emitted spenso index order
   `(spin, spin, Lorentz)`, with object-level coverage to catch regressions.
-- Full-SM spenso generation now proceeds past projector structures and currently
-  exposes custom propagator helper objects such as `UFP`/`UFPC` as the next
-  unsupported tensor family.
+- Full-SM spenso model export now skips custom propagator expansion, avoiding
+  unsupported helper objects such as `UFP`/`UFPC`, and generated ordinary-SM
+  `HelAmps_sm.cc` compiles with the spenso-backed C++ option.
 
 ## Phase 1: Expand Eval Parity
 
@@ -67,6 +67,9 @@ runtime replacement should not require a user-facing compatibility mode.
   metric, identity, gamma matrices, chiral projectors, charge conjugation,
   epsilon tensors, masses, widths, couplings, momenta, complex masses, spinors,
   vectors, scalars, and tensor wavefunctions.
+- Add explicit coverage for custom propagator helper objects such as
+  `UFP`/`UFPC` and the related epsilon/polarization-vector helper family before
+  enabling custom-propagator expansion for the spenso backend.
 - Keep expected parameter lists derived from `TensorNetwork(...).result_tensor()`
   so tests exercise the same expansion path as code generation.
 - Avoid adding backend-specific ordering exceptions unless they follow from the
@@ -77,8 +80,9 @@ runtime replacement should not require a user-facing compatibility mode.
 - Trace all places that request `language='CPP'` through `WriterFactory` and
   process export.
 - Add test-only plumbing that can generate a small process once through normal
-  C++ and once through spenso C++, then compile both outputs. Routine-level,
-  model-subset, and exported-model compile coverage are in place.
+  C++ and once through spenso C++, then compile both outputs. Routine-level and
+  model-subset coverage, exported-model compile coverage, and full-model spenso
+  export option coverage are in place.
 - Confirm generated headers, includes, auxiliary functions, and makefiles do not
   assume the old direct-expression backend.
 - Make sure generated spenso files do not depend on temporary files or external
@@ -91,8 +95,9 @@ runtime replacement should not require a user-facing compatibility mode.
 - Add parallel ALOHA tests for wrapper signatures, parameter packing, cinds, and
   eval parity in `tests/parallel_tests/test_aloha.py`.
 - Add at least one IO/process-level test that exercises the exported generated
-  C++ in the same shape users compile. The current IO test compiles the
-  generated spenso-backed `HelAmps_sm.cc` for a small SM subset.
+  C++ in the same shape users compile. The current IO tests compile the
+  generated spenso-backed `HelAmps_sm.cc` for a small SM subset and verify that
+  full-SM spenso export disables custom-propagator expansion.
 - Keep generated fixture files small and intentional; ignore or untrack process
   dumps and backup artifacts.
 
@@ -120,4 +125,8 @@ uv run python tests/test_manager.py -pP -t0 test_short_spenso_cpp_eval_matches_c
 
 ```bash
 uv run python -m unittest tests.unit_tests.iolibs.test_export_cpp.ExportUFOModelCPPSpensoTest.test_write_spenso_aloha_routines_compile
+```
+
+```bash
+uv run python -m unittest tests.unit_tests.iolibs.test_export_cpp.ExportUFOModelCPPSpensoTest
 ```

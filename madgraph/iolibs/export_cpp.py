@@ -394,7 +394,7 @@ class UFOModelConverterCPP(object):
             aloha_model.compute_subset(self.wanted_lorentz,
                                        keep_abstract=keep_abstract)
         else:
-            aloha_model.compute_all(save=False, custom_propa=True,
+            aloha_model.compute_all(save=False, custom_propa=not keep_abstract,
                                     keep_abstract=keep_abstract)
             
         for abstracthelas in dict(aloha_model).values():
@@ -3217,7 +3217,7 @@ class UFOModelConverterCPP(object):
             aloha_model.compute_subset(self.wanted_lorentz,
                                        keep_abstract=keep_abstract)
         else:
-            aloha_model.compute_all(save=False, custom_propa=True,
+            aloha_model.compute_all(save=False, custom_propa=not keep_abstract,
                                     keep_abstract=keep_abstract)
             
         for abstracthelas in dict(aloha_model).values():
@@ -3504,4 +3504,3 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
         return cmd._export_plugin(cmd._export_dir, opt)
 
     
-
