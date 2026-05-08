@@ -21,6 +21,8 @@ import copy
 import fractions
 import os
 import re
+import subprocess
+import tempfile
 import tests.IOTests as IOTests
 from tests import test_manager
 
@@ -1345,6 +1347,58 @@ double Sigma_sm_qq_six::matrix_uu_six()
 
 
 #===============================================================================
+# ExportUFOModelCPPSpensoTest
+#===============================================================================
+class ExportUFOModelCPPSpensoTest(unittest.TestCase):
+    """Focused checks for spenso-backed C++ model export."""
+
+    def _cpp_compiler(self):
+        """Return a C++ compiler usable for generated-source smoke tests."""
+        return (os.environ.get('CXX') or misc.which('clang++') or
+                misc.which('g++') or misc.which('c++'))
+
+    def test_write_spenso_aloha_routines_compile(self):
+        """Test exported spenso-backed HelAmps C++ compiles for a small subset."""
+        try:
+            import symbolica.community.spenso  # noqa: F401
+        except ImportError:
+            self.skipTest('symbolica spenso support is not available.')
+
+        compiler = self._cpp_compiler()
+        if not compiler:
+            self.skipTest('No C++ compiler available.')
+
+        model = import_ufo.import_model(import_ufo.find_ufo_path('sm'))
+        with tempfile.TemporaryDirectory(prefix='aloha-spenso-export-') as tmpdir:
+            model_builder = export_cpp.UFOModelConverterCPP(
+                model,
+                tmpdir,
+                wanted_lorentz=[(('VVS1',), (), 1)],
+                replace_dict={'aloha_cpp_backend': 'spenso'})
+            model_builder.write_files()
+
+            helamps_h = pjoin(tmpdir, 'HelAmps_sm.h')
+            helamps_cc = pjoin(tmpdir, 'HelAmps_sm.cc')
+            self.assertTrue(os.path.isfile(helamps_h))
+            self.assertTrue(os.path.isfile(helamps_cc))
+
+            with open(helamps_cc) as stream:
+                helamps_source = stream.read()
+            self.assertIn('VVS1_1_complexf64(spenso_params, spenso_buffer, spenso_out);',
+                          helamps_source)
+            self.assertNotIn('#include <complex.h>', helamps_source)
+
+            template_dir = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files')
+            try:
+                subprocess.check_output([
+                    compiler, '-std=c++11', '-I', tmpdir, '-I', template_dir,
+                    '-c', helamps_cc, '-o', pjoin(tmpdir, 'HelAmps_sm.o')
+                ], stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as error:
+                self.fail(error.output.decode('utf-8', 'replace'))
+
+
+#===============================================================================
 # ExportUFOModelPythia8Test
 #===============================================================================
 class ExportUFOModelPythia8Test(unittest.TestCase,
@@ -2235,6 +2289,3 @@ class IOExportMatchBox(unittest.TestCase,
 
         #print open(self.give_pos('test.cc')).read()
         self.assertFileContains('test.cc', goal_string, partial=True)
-
-
-

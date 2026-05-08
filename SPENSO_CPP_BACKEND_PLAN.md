@@ -29,6 +29,9 @@ runtime replacement should not require a user-facing compatibility mode.
 - Eval-level tests now compile normal C++ and spenso C++ for VVS/VVV plus
   SSS/FFS/FFV/SSV/VSS routines, run both with identical inputs, and compare
   scalar, spinor, vector, and vertex HELAS outputs.
+- Export-level coverage now writes SM C++ model files for a small Lorentz subset
+  through the spenso-backed `CPP` option and compiles the generated
+  `HelAmps_sm.cc`.
 - Gamma tensor registration now follows the emitted spenso index order
   `(spin, spin, Lorentz)`, with object-level coverage to catch regressions.
 
@@ -69,9 +72,8 @@ runtime replacement should not require a user-facing compatibility mode.
 - Trace all places that request `language='CPP'` through `WriterFactory` and
   process export.
 - Add test-only plumbing that can generate a small process once through normal
-  C++ and once through spenso C++, then compile both outputs. Routine-level and
-  model-subset plumbing are in place; process-export compile coverage is still
-  pending.
+  C++ and once through spenso C++, then compile both outputs. Routine-level,
+  model-subset, and exported-model compile coverage are in place.
 - Confirm generated headers, includes, auxiliary functions, and makefiles do not
   assume the old direct-expression backend.
 - Make sure generated spenso files do not depend on temporary files or external
@@ -84,7 +86,8 @@ runtime replacement should not require a user-facing compatibility mode.
 - Add parallel ALOHA tests for wrapper signatures, parameter packing, cinds, and
   eval parity in `tests/parallel_tests/test_aloha.py`.
 - Add at least one IO/process-level test that exercises the exported generated
-  C++ in the same shape users compile.
+  C++ in the same shape users compile. The current IO test compiles the
+  generated spenso-backed `HelAmps_sm.cc` for a small SM subset.
 - Keep generated fixture files small and intentional; ignore or untrack process
   dumps and backup artifacts.
 
@@ -108,4 +111,8 @@ uv run python -m unittest tests.parallel_tests.test_aloha.TestAlohaWriter.test_s
 
 ```bash
 uv run python tests/test_manager.py -pP -t0 test_short_spenso_cpp_eval_matches_cpp test_short_spenso_C test_short_spenso_FFV1_C test_short_cpp_and_spenso_C_generation test_short_spenso_params_follow_cpp_argument_order
+```
+
+```bash
+uv run python -m unittest tests.unit_tests.iolibs.test_export_cpp.ExportUFOModelCPPSpensoTest.test_write_spenso_aloha_routines_compile
 ```
